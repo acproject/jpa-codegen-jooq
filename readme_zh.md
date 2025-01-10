@@ -7,13 +7,12 @@
 #### 本地安装编译好的jar包
 ```shell
 mvn install:install-file \
-> -Dfile=build/libs/jpa-codegen-jooq-0.2.0.jar  \
-> -DgroupId=com.owiseman \
-> -DartifactId=jpa-codegen-jooq \
-> -Dversion=0.2.0 \
-> -Dpackaging=jar \
-> -DgeneratePom=true
-
+-Dfile=build/libs/jpa-codegen-jooq-0.2.0.jar  \
+-DgroupId=com.owiseman \
+-DartifactId=jpa-codegen-jooq \
+-Dversion=0.2.0 \
+-Dpackaging=jar \
+-DgeneratePom=true
 ```
 
 ### 注意事项
