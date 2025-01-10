@@ -1,0 +1,193 @@
+package com.owiseman.jpa;
+
+import com.squareup.javapoet.ClassName;
+import com.squareup.javapoet.FieldSpec;
+import com.squareup.javapoet.JavaFile;
+import com.squareup.javapoet.MethodSpec;
+import com.squareup.javapoet.TypeSpec;
+import org.hibernate.annotations.Type;
+
+
+import javax.annotation.processing.AbstractProcessor;
+import javax.annotation.processing.ProcessingEnvironment;
+import javax.annotation.processing.RoundEnvironment;
+import javax.annotation.processing.SupportedAnnotationTypes;
+import javax.annotation.processing.SupportedSourceVersion;
+
+import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Modifier;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.ElementFilter;
+import javax.lang.model.util.Elements;
+import javax.lang.model.util.Types;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Table;
+
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@SupportedAnnotationTypes("javax.persistence.Entity")
+@SupportedSourceVersion(SourceVersion.RELEASE_17)
+public class JpaEntityScannerProcessor extends AbstractProcessor {
+    private Elements elementUtils;
+    private Types typeUtils;
+
+
+    @Override
+    public synchronized void init(ProcessingEnvironment processingEnv) {
+        super.init(processingEnv);
+        elementUtils = processingEnv.getElementUtils();
+        typeUtils = processingEnv.getTypeUtils();
+    }
+
+    @Override
+    public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWith(Entity.class)
+                .stream()
+                .filter(element -> element instanceof TypeElement)
+                .map(element -> (TypeElement) element)
+                .collect(Collectors.toList());
+        if (!entityClasses.isEmpty()) {
+            generateCode(entityClasses);
+        }
+        return true;
+    }
+
+    private void generateCode(List<TypeElement> entityClasses) {
+        assert !entityClasses.isEmpty();
+        String packageName = elementUtils.getPackageOf(entityClasses.getFirst()).toString();
+
+        TypeSpec tableClass = TypeSpec.classBuilder("Tables")
+                .addModifiers(Modifier.PUBLIC)
+                .build();
+        for (var typeElement : entityClasses) {
+            String className = typeElement.getSimpleName().toString();
+            String tableName = getTableName(typeElement);
+            TypeSpec tableInnerClass = TypeSpec.classBuilder(className.toUpperCase())
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                    .addField(getTableFieldSpec(tableName))
+                    .addFields(getFieldSpecs(typeElement))
+                    .addMethod(MethodSpec.constructorBuilder()
+                            .addModifiers(Modifier.PRIVATE)
+                            .build())
+                    .build();
+            tableClass = tableClass.toBuilder().addType(tableInnerClass).build();
+        }
+
+        JavaFile javaFile = JavaFile.builder(packageName, tableClass)
+                .build();
+        try  {
+            javaFile.writeTo(processingEnv.getFiler());
+        } catch( java.io.IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private String getTableName(TypeElement typeElement) {
+        Table tableAnnotation = typeElement.getAnnotation(Table.class);
+        String tableName = tableAnnotation != null && !tableAnnotation.name().isEmpty() ? tableAnnotation.name()
+                : convertClassNameToTableName(typeElement.getSimpleName().toString());
+        return tableName;
+    }
+
+//    private String pluralize(String word) {
+//        if (word.endsWith("y")) {
+//            return word.substring(0, word.length() - 1) + "ies";
+//        }
+//        return word + "s";
+//    }
+
+    private FieldSpec getTableFieldSpec(String tableName) {
+        return FieldSpec.builder(ClassName.get("org.jooq", "Table"),
+                        "TABLE", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                .initializer("DSL.table(\"" + tableName + "\")").build();
+    }
+
+    private List<FieldSpec> getFieldSpecs(TypeElement typeElement) {
+        List<FieldSpec> fieldSpecs = new ArrayList<>();
+        List<VariableElement> fields = ElementFilter.fieldsIn(typeElement.getEnclosedElements());
+
+        for (var field : fields) {
+            String fieldName = field.getSimpleName().toString();
+            Column columnAnnotation = field.getAnnotation(Column.class);
+            String columnName = columnAnnotation != null ? columnAnnotation.name()
+                    : fieldName;
+            TypeMirror typeMirror = field.asType();
+            String typeName = typeUtils.erasure(typeMirror).toString();
+
+            if (field.getAnnotation(Type.class) != null &&
+                    "jsonb".equals(field.getAnnotation(Type.class).type())) {
+                typeName = "org.jooq.JSONB";
+            }
+
+            String sqlDataType = getSqlDataType(typeName);
+            String dataTypeWithLength = typeName.equals("java.lang.String") ?
+                    sqlDataType + ".length(" + getColumnLength(field) + ")" : sqlDataType;
+
+            FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
+                            fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                    .initializer("DSL.field(TABLE, \"" + columnName + "\", " + dataTypeWithLength +
+                            ".nullable(" + isNullable(field) + "))")
+                    .build();
+            fieldSpecs.add(fieldSpec);
+        }
+        return fieldSpecs;
+    }
+
+    private int getColumnLength(VariableElement field) {
+        Column columnAnnotation = field.getAnnotation(Column.class);
+        if (columnAnnotation != null && columnAnnotation.length() > 0) {
+            return columnAnnotation.length();
+        }
+        return 255; // default 255
+    }
+
+    private boolean isNullable(VariableElement field) {
+        Column columnAnnotation = field.getAnnotation(Column.class);
+        if (columnAnnotation != null) return columnAnnotation.nullable();
+        return true;
+    }
+
+    private String getSqlDataType(String typeName) {
+        return switch (typeName) {
+            case "int", "java.lang.Integer" -> "SQLDataType.INTEGER";
+            case "long", "java.lang.Long" -> "SQLDataType.BIGINT";
+            case "java.lang.String" -> "SQLDataType.VARCHAR";
+            case "java.time.LocalDate" -> "SQLDataType.LOCALDATE";
+            case "java.time.LocalDateTime" -> "SQLDataType.LOCALDATETIME";
+            case "java.time.LocalTime" -> "SQLDataType.LOCALTIME";
+            case "java.time.OffsetDateTime", "java.util.Date" -> "SQLDataType.DATE";
+            case "org.jooq.JSONB" -> "SQLDataType.JSONB";
+            case "java.lang.Boolean" -> "SQLDataType.BOOLEAN";
+            case "org.jooq.JSON" -> "SQLDataType.JSON";
+            default -> "SQLDataType.OTHER";
+        };
+    }
+
+
+    // 我们遵循默认的驼峰命名法到下划线分隔的小写形式的转换
+    private static String convertClassNameToTableName(String className) {
+        if (className == null || className.isEmpty()) {
+            return className;
+        }
+        StringBuilder result = new StringBuilder();
+        char[] chars = className.toCharArray();
+        for (int i = 0; i < chars.length; i++) {
+            char ch = chars[i];
+            if (Character.isUpperCase(ch)) {
+                if (i > 0) result.append("_");
+                result.append(Character.toLowerCase(ch));
+            } else {
+                result.append(ch);
+            }
+        }
+        return result.toString().toLowerCase();
+    }
+}
