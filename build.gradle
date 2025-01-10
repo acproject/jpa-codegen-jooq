@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'java-gradle-plugin'
     id 'maven-publish'
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
 }
 
 group = 'com.owiseman'
@@ -27,6 +28,10 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+shadowJar {
+    archiveClassifier.set('all') // 设置分类器，使生成的jar文件名更明确
 }
 
 
