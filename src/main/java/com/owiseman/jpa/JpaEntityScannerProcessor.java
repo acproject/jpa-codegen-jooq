@@ -50,6 +50,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        System.out.println("================== 进入 ===========================");
         List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWith(Entity.class)
                 .stream()
                 .filter(element -> element instanceof TypeElement)
@@ -85,6 +86,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         JavaFile javaFile = JavaFile.builder(packageName, tableClass)
                 .build();
         try  {
+            System.out.println("================== 写入文件 ===========================");
             javaFile.writeTo(processingEnv.getFiler());
         } catch( java.io.IOException e) {
             e.printStackTrace();
