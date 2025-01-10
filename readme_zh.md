@@ -4,7 +4,17 @@
 这是一个Maven或Gradle插件，旨在从JPA实体生成JOOQ代码，从而避免JOOQ扫描数据库模式的需求。这种方法结合了两种技术的优势：JPA简化了ORM（对象关系映射）和数据迁移，而JOOQ则提供了一个强大的SQL构建器和查询执行框架。
 
 ### 使用方法
-稍等
+#### 本地安装编译好的jar包
+```shell
+mvn install:install-file \
+> -Dfile=build/libs/jpa-codegen-jooq-0.2.0.jar  \
+> -DgroupId=com.owiseman \
+> -DartifactId=jpa-codegen-jooq \
+> -Dversion=0.2.0 \
+> -Dpackaging=jar \
+> -DgeneratePom=true
+
+```
 
 ### 注意事项
 * 单一数据源：JPA与JOOQ应当使用同一数据源

@@ -33,12 +33,14 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes("javax.persistence.Entity")
-@SupportedSourceVersion(SourceVersion.RELEASE_17)
+@SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class JpaEntityScannerProcessor extends AbstractProcessor {
     private Elements elementUtils;
     private Types typeUtils;
 
-
+    public JpaEntityScannerProcessor(){
+        super();
+    }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
