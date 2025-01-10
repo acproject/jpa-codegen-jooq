@@ -33,7 +33,7 @@ test {
 gradlePlugin {
     plugins {
         create('jpa-codegen-jooq') {
-            id = 'com.owiseman.jpa.jpa-codegen-jooq'
+            id = 'jpa-codegen-jooq'
             implementationClass = 'com.owiseman.jpa.JpaEntityScannerProcessor'
         }
     }
