@@ -3,8 +3,8 @@
 ### Main Features
 This is a Maven or Gradle plugin designed to generate JOOQ code from JPA entities, eliminating the need for JOOQ to scan the database schema. This approach leverages the strengths of both technologies: JPA simplifies ORM(Object-Relational Mapping) and data migration, while JOOQ provides a powerful SQL builder and query execution framework.
 
-### Usage
-#### Maven
+
+### Compile and Install
 [./examples/maven-demo](./examples/maven-demo)
 ```shell
 # Compile with gradle
@@ -18,11 +18,11 @@ mvn install:install-file \
 -Dversion=0.2.0 \
 -Dpackaging=jar \
 -DgeneratePom=true
-```
-
-#### Gradle 
+``` 
+### Usage
+#### Gradle
 If it's Gradle, add the following dependency and codes to build.gradle, and ``libs`` is a folder in the root directory of the project
-```gradle usage
+```gradle
 compileOnly  files('libs/jpa-codegen-jooq-0.2.0.jar')
 compileJava {
 	options.compilerArgs += [

@@ -22,12 +22,16 @@ mvn install:install-file \
 ```
 
 ### 使用方法
-
 #### Gradle
-
 如果是Gradle在build.gradle中添加如下依赖``libs``是项目根目录下的一个文件夹
 ```gradle
 compileOnly  files('libs/jpa-codegen-jooq-0.2.0.jar')
+compileJava {
+	options.compilerArgs += [
+			'-processor', 'com.owiseman.jpa.JpaEntityScannerProcessor'
+	]
+	options.annotationProcessorPath += configurations.annotationProcessor
+}
 ```
 下一步运行：
 ```shell
