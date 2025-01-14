@@ -81,10 +81,6 @@ gradle compileJava
 mvn clean compile
 ```
 
-#### 通过examples中的例子了解使用方法
-* 这里采用**Maven的例子** [./examples/maven-demo](./examples/maven-demo)
-* [./examples/gradle-demo](./examples/gradle-demo)
-
 下面是通过手动方式去编译例子中的Entity类型，并且生成对应的JOOQ代码
 ```shell
 # 在maven项目中运行下面的命令，获得需要的classpath路径
@@ -95,7 +91,8 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
       -d target/classes \
       src/main/java/com/example/entity/Students.java
 ```
-
+#### 通过examples中的例子了解使用方法
+[./examples](./examples)
 
 ### 注意事项
 * 单一数据源：JPA与JOOQ应当使用同一数据源

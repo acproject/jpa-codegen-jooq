@@ -81,8 +81,7 @@ mvn clean compile
 ```
 
 ### Learn how to use it with examples in examples
-* [./examples/maven-demo](./examples/maven-demo)
-* [./examples/gradle-demo](./examples/gradle-demo)
+* [./examples](./examples)
 
 ### reference
 https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
