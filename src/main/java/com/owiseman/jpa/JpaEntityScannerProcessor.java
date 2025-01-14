@@ -59,7 +59,6 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         // 在Set中添加需要去扫描的类型
         typeElements.add(jakarta.persistence.Entity.class);
         typeElements.add(Entity.class);
-        System.out.println("================== process start ===========================");
 
         List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWithAny(typeElements)
                     .stream()
@@ -74,7 +73,6 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 throw new RuntimeException(e);
             }
         }
-        System.out.println("================== process end ===========================");
         return true;
     }
 
@@ -115,7 +113,8 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             Writer writer = filerSourceFile.openWriter();
             writer.write(writeFile);
             writer.close();
-//            javaFile.writeTo(processingEnv.getFiler());
+
+            System.out.println("Generated file: " + fileName);
         } catch( java.io.IOException e) {
             e.printStackTrace();
         }
