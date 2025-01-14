@@ -7,6 +7,7 @@ import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "students")
+//@Getter
 public class Students {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

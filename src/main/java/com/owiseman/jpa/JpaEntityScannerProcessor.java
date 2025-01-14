@@ -26,20 +26,21 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Table;
 
-
+import java.lang.annotation.Annotation;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes("javax.persistence.Entity")
+@SupportedAnnotationTypes({"javax.persistence.Entity", "jakarta.persistence.Entity"})
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class JpaEntityScannerProcessor extends AbstractProcessor {
     private Elements elementUtils;
     private Types typeUtils;
 
     public JpaEntityScannerProcessor(){
-        super();
+
     }
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -50,28 +51,47 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        System.out.println("================== 进入 ===========================");
-        List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWith(Entity.class)
-                .stream()
-                .filter(element -> element instanceof TypeElement)
-                .map(element -> (TypeElement) element)
-                .collect(Collectors.toList());
+        Set<Class<? extends Annotation>> typeElements = new HashSet<>();
+        // 在Set中添加需要去扫描的类型
+        typeElements.add(jakarta.persistence.Entity.class);
+        typeElements.add(Entity.class);
+        System.out.println("================== process start ===========================");
+
+        List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWithAny(typeElements)
+                    .stream()
+                    .filter(element -> element instanceof TypeElement)
+                    .map(element -> (TypeElement) element)
+                    .collect(Collectors.toList());
+
         if (!entityClasses.isEmpty()) {
-            generateCode(entityClasses);
+            try {
+                generateCode(entityClasses);
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            }
         }
+        System.out.println("================== process end ===========================");
         return true;
     }
 
-    private void generateCode(List<TypeElement> entityClasses) {
+    private void generateCode(List<TypeElement> entityClasses) throws ClassNotFoundException {
         assert !entityClasses.isEmpty();
         String packageName = elementUtils.getPackageOf(entityClasses.getFirst()).toString();
-
+        // 实现导入特定的实现SQLDataType和DSL
+        // 我们在packageName 后面拼接需要用到的类
+        packageName += "\n"
+                    + "import org.jooq.impl.SQLDataType"
+                    + "import org.jooq.impl.DSL"
+                    + "\n";
+        // 定义类及其名字
         TypeSpec tableClass = TypeSpec.classBuilder("Tables")
                 .addModifiers(Modifier.PUBLIC)
                 .build();
+
         for (var typeElement : entityClasses) {
             String className = typeElement.getSimpleName().toString();
             String tableName = getTableName(typeElement);
+
             TypeSpec tableInnerClass = TypeSpec.classBuilder(className.toUpperCase())
                     .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                     .addField(getTableFieldSpec(tableName))
@@ -82,11 +102,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                     .build();
             tableClass = tableClass.toBuilder().addType(tableInnerClass).build();
         }
-
         JavaFile javaFile = JavaFile.builder(packageName, tableClass)
                 .build();
         try  {
-            System.out.println("================== 写入文件 ===========================");
             javaFile.writeTo(processingEnv.getFiler());
         } catch( java.io.IOException e) {
             e.printStackTrace();
@@ -109,6 +127,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 //    }
 
     private FieldSpec getTableFieldSpec(String tableName) {
+
         return FieldSpec.builder(ClassName.get("org.jooq", "Table"),
                         "TABLE", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                 .initializer("DSL.table(\"" + tableName + "\")").build();
@@ -131,13 +150,15 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 typeName = "org.jooq.JSONB";
             }
 
+
             String sqlDataType = getSqlDataType(typeName);
             String dataTypeWithLength = typeName.equals("java.lang.String") ?
                     sqlDataType + ".length(" + getColumnLength(field) + ")" : sqlDataType;
 
             FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
                             fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-                    .initializer("DSL.field(TABLE, \"" + columnName + "\", " + dataTypeWithLength +
+
+                    .initializer("DSL.field(String.valueOf(TABLE), \"" + columnName + "\", " + dataTypeWithLength +
                             ".nullable(" + isNullable(field) + "))")
                     .build();
             fieldSpecs.add(fieldSpec);
