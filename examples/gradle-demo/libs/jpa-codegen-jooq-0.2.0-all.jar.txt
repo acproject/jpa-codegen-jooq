@@ -1,0 +1,2 @@
+在这里手动添加jar包： jpa-codegen-jooq-0.2.0-all.jar
+Manually add the jar package here： jpa-codegen-jooq-0.2.0-all.jar

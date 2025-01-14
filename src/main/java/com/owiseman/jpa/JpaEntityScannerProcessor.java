@@ -15,6 +15,7 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 
 import javax.lang.model.SourceVersion;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
@@ -25,8 +26,11 @@ import javax.lang.model.util.Types;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Table;
+import javax.tools.JavaFileObject;
 
+import java.io.Writer;
 import java.lang.annotation.Annotation;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -77,14 +81,10 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
     private void generateCode(List<TypeElement> entityClasses) throws ClassNotFoundException {
         assert !entityClasses.isEmpty();
         String packageName = elementUtils.getPackageOf(entityClasses.getFirst()).toString();
-        // 实现导入特定的实现SQLDataType和DSL
-        // 我们在packageName 后面拼接需要用到的类
-        packageName += "\n"
-                    + "import org.jooq.impl.SQLDataType"
-                    + "import org.jooq.impl.DSL"
-                    + "\n";
+
         // 定义类及其名字
         TypeSpec tableClass = TypeSpec.classBuilder("Tables")
+
                 .addModifiers(Modifier.PUBLIC)
                 .build();
 
@@ -102,10 +102,20 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                     .build();
             tableClass = tableClass.toBuilder().addType(tableInnerClass).build();
         }
+
         JavaFile javaFile = JavaFile.builder(packageName, tableClass)
                 .build();
+
+        String writeFile = injectImports(javaFile, List.of("org.jooq.impl.DSL", "org.jooq.impl.SQLDataType"));
+
         try  {
-            javaFile.writeTo(processingEnv.getFiler());
+            String fileName = javaFile.packageName.isEmpty() ? javaFile.typeSpec.name : javaFile.packageName + "." + javaFile.typeSpec.name;
+            List<Element> originatingElements = javaFile.typeSpec.originatingElements;
+            JavaFileObject filerSourceFile =  processingEnv.getFiler().createSourceFile(fileName, (Element[])originatingElements.toArray(new Element[originatingElements.size()]));
+            Writer writer = filerSourceFile.openWriter();
+            writer.write(writeFile);
+            writer.close();
+//            javaFile.writeTo(processingEnv.getFiler());
         } catch( java.io.IOException e) {
             e.printStackTrace();
         }
@@ -194,6 +204,24 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             case "org.jooq.JSON" -> "SQLDataType.JSON";
             default -> "SQLDataType.OTHER";
         };
+    }
+
+    // 添加导入
+    private String injectImports(JavaFile javaFile, List<String> imports) {
+        String rawSource = javaFile.toString();
+
+        List<String> result = new ArrayList<>();
+        for (String s : rawSource.split("\n", -1)) {
+            result.add(s);
+            if (s.startsWith("package ")) {
+                result.add("");
+                for (String i : imports) {
+                    result.add("import " + i + ";");
+                }
+            }
+        }
+
+        return String.join("\n", result);
     }
 
 
