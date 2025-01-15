@@ -80,7 +80,7 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
       src/main/java/com/example/entity/Students.java
 ```
 
-### Learn how to use it with examples in examples
+### Learn how to use it in examples
 * [./examples](./examples)
 
 ### reference
