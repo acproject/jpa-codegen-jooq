@@ -8,16 +8,6 @@
 ```shell
 # 先用gradle编译
 gradle clean shadowJar
-
-# 通过maven安装到本地
-mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
--DgroupId=com.owiseman \
--DartifactId=jpa-codegen-jooq \
--Dversion=0.2.0 \
--Dpackaging=jar \
--DgeneratePom=true
-
 ```
 
 ### 使用方法
@@ -38,48 +28,46 @@ gradle compileJava
 ```
 
 #### Maven
+目前因为没有上Maven的中央仓库，所以需要手动安装到本地。
+```shell
+# Install it locally using Maven
+mvn install:install-file \
+-Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
+-DgroupId=com.owiseman \
+-DartifactId=jpa-codegen-jooq \
+-Dversion=0.2.0 \
+-Dpackaging=jar \
+-DgeneratePom=true
+```
 在pom.xml中添加插件内容如下：
 ```pom.xml
 <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <dependencies>
-                    <dependency>
-                        <groupId>javax.persistence</groupId>
-                        <artifactId>javax.persistence-api</artifactId>
-                        <version>2.2</version>
-                    </dependency>
-                </dependencies>
-                <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                        <path>
-                            <groupId>com.owiseman</groupId>
-                            <artifactId>jpa-codegen-jooq</artifactId>
-                            <version>0.2.0</version>
-                        </path>
-                    </annotationProcessorPaths>
-                    <compilerArgs>
-                        <arg>-processor</arg>
-                        <arg>com.owiseman.jpa.JpaEntityScannerProcessor</arg>
-                    </compilerArgs>
-
-                </configuration>
-
-            </plugin>
-        </plugins>
-  </build>
+                    <configuration>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>com.owiseman</groupId>
+                                <artifactId>jpa-codegen-jooq</artifactId>
+                                <version>0.2.0</version>
+                            </path>
+                        </annotationProcessorPaths>
+                        <compilerArgs>
+                            <arg>-processor</arg>
+                            <arg>com.owiseman.jpa.JpaEntityScannerProcessor</arg>
+                        </compilerArgs>
+                    </configuration>
+        </plugin>
+    </plugins>
+</build>
 ```
 下一步运行：
 ```shell
 mvn clean compile
 ```
-
+### 手动测试
 下面是通过手动方式去编译例子中的Entity类型，并且生成对应的JOOQ代码
 ```shell
 # 在maven项目中运行下面的命令，获得需要的classpath路径
@@ -90,7 +78,8 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
       -d target/classes \
       src/main/java/com/example/entity/Students.java
 ```
-#### 通过examples中的例子了解使用方法
+
+### 通过examples中的例子了解使用方法
 [./examples](./examples)
 
 ### 注意事项

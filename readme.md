@@ -9,15 +9,6 @@ You need JDK 21 or later and Gradle installed to execute build.gradle scripts
 ```shell
 # Compile with gradle
 gradle clean shadowJar
-
-# Install it locally using Maven
-mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
--DgroupId=com.owiseman \
--DartifactId=jpa-codegen-jooq \
--Dversion=0.2.0 \
--Dpackaging=jar \
--DgeneratePom=true
 ``` 
 ### Usage
 #### Gradle
@@ -38,46 +29,55 @@ gradle compileJava
 ```
 
 #### Maven
+At present, because there is no central repository for Maven, you need to manually install it locally.
+```shell
+# Install it locally using Maven
+mvn install:install-file \
+-Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
+-DgroupId=com.owiseman \
+-DartifactId=jpa-codegen-jooq \
+-Dversion=0.2.0 \
+-Dpackaging=jar \
+-DgeneratePom=true
+```
 Add the plugin to the pom.xml as follows:
 ```xml
 <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <dependencies>
-                    <dependency>
-                        <groupId>javax.persistence</groupId>
-                        <artifactId>javax.persistence-api</artifactId>
-                        <version>2.2</version>
-                    </dependency>
-                </dependencies>
-                <configuration>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </path>
-                        <path>
-                            <groupId>com.owiseman</groupId>
-                            <artifactId>jpa-codegen-jooq</artifactId>
-                            <version>0.2.0</version>
-                        </path>
-                    </annotationProcessorPaths>
-                    <compilerArgs>
-                        <arg>-processor</arg>
-                        <arg>com.owiseman.jpa.JpaEntityScannerProcessor</arg>
-                    </compilerArgs>
-
-                </configuration>
-
-            </plugin>
-        </plugins>
-  </build>
+                    <configuration>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>com.owiseman</groupId>
+                                <artifactId>jpa-codegen-jooq</artifactId>
+                                <version>0.2.0</version>
+                            </path>
+                        </annotationProcessorPaths>
+                        <compilerArgs>
+                            <arg>-processor</arg>
+                            <arg>com.owiseman.jpa.JpaEntityScannerProcessor</arg>
+                        </compilerArgs>
+                    </configuration>
+        </plugin>
+    </plugins>
+</build>
 ```
 Next run:
 ```shell
 mvn clean compile
+```
+### Manual testing
+Here's how to manually compile the Entity type in the example and generate the corresponding JOOQ code.
+```shell
+# Run the following command in the maven project to get the required classpath path
+mvn dependency:build-classpath -Dmdep.outputFile=classpath.txt
+# Manually compile and test whether the JpaEntityScannerProcessor takes effect by running the javac command
+javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
+      -processor com.owiseman.jpa.JpaEntityScannerProcessor \
+      -d target/classes \
+      src/main/java/com/example/entity/Students.java
 ```
 
 ### Learn how to use it with examples in examples
