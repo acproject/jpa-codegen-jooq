@@ -3,9 +3,8 @@
 ### 主要功能
 这是一个Maven或Gradle插件，旨在从JPA实体生成JOOQ代码，从而避免JOOQ扫描数据库模式的需求。这种方法结合了两种技术的优势：JPA简化了ORM（对象关系映射）和数据迁移，而JOOQ则提供了一个强大的SQL构建器和查询执行框架。
 
-### 使用方法
-
-#### 本地编译与安装
+### 本地编译与安装
+你需要JDK 21或者以上版本，并且安装了Gradle用于执行build.gradle脚本
 ```shell
 # 先用gradle编译
 gradle clean shadowJar

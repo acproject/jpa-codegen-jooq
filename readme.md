@@ -5,7 +5,7 @@ This is a Maven or Gradle plugin designed to generate JOOQ code from JPA entitie
 
 
 ### Compile and Install
-[./examples/maven-demo](./examples/maven-demo)
+You need JDK 21 or later and Gradle installed to execute build.gradle scripts
 ```shell
 # Compile with gradle
 gradle clean shadowJar
