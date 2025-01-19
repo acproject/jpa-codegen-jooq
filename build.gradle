@@ -16,6 +16,8 @@ dependencies {
     compileOnly 'com.squareup:javapoet:1.13.0'
     implementation 'com.squareup:javapoet:1.13.0'
     annotationProcessor 'com.squareup:javapoet:1.13.0'
+    annotationProcessor 'org.projectlombok:lombok:1.18.20'
+    compileOnly 'org.projectlombok:lombok:1.18.20'
     compileOnly 'org.jooq:jooq:3.16.6'
     compileOnly 'org.hibernate:hibernate-core:5.6.15.Final'
     compileOnly 'jakarta.persistence:jakarta.persistence-api:3.2.0'
@@ -32,6 +34,7 @@ dependencies {
     implementation 'com.rabbitmq:amqp-client:5.24.0'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
     implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'org.springframework.amqp:spring-rabbit:3.2.1'
 }
 
 tasks.withType(Zip) {
@@ -46,6 +49,11 @@ shadowJar {
     archiveClassifier.set('all') // 设置分类器，使生成的jar文件名更明确
 }
 
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
 
 gradlePlugin {
     plugins {

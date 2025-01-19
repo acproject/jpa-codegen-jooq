@@ -91,4 +91,53 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
 ### 参考
 https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
 
+### 新增特性
+* 添加了对Jooq对象的操作工具类，基础用法很简单
+#### 示例1 ： 在Spring中使用
+```java
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.jooq.DSLContext;
+
+@Service
+public class MyService {
+
+    @Autowired
+    private DSLContext dslContext;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    public void processRequest(String json) throws Exception {
+        TableAndDataUtil.processRequest(dslContext, rabbitTemplate, json);
+    }
+}
+```
+
+#### 示例2 ： 在非Spring中使用
+```java
+import org.jooq.impl.DSL;
+import org.jooq.DSLContext;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import java.sql.Connection;
+import java.sql.DriverManager;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        // 创建 DSLContext
+        Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/main_db", "user", "password");
+        DSLContext dslContext = DSL.using(connection);
+
+        // 创建 RabbitTemplate
+        RabbitTemplate rabbitTemplate = new RabbitTemplate();
+        rabbitTemplate.setConnectionFactory(new ConnectionFactory());
+
+        // 处理请求
+        String json = "{ \"operation\": \"insert\", \"table\": \"users\", \"data\": { \"id\": 1, \"name\": \"John Doe\", \"email\": \"john.doe@example.com\" } }";
+        TableAndDataUtil.processRequest(dslContext, rabbitTemplate, json);
+    }
+}
+```
+
 [English](readme.md)
