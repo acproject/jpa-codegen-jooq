@@ -5,10 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 
 import lombok.extern.log4j.Log4j;
-import org.gradle.internal.impldep.com.google.api.client.json.Json;
-import org.jooq.*;
 
+import org.jooq.Condition;
+import org.jooq.CreateTableColumnStep;
+import org.jooq.DSLContext;
+import org.jooq.DataType;
+import org.jooq.InsertValuesStepN;
 import org.jooq.Record;
+import org.jooq.Result;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
