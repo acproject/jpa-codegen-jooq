@@ -2,8 +2,6 @@ package com.owiseman.jpa.util;
 
 import org.jooq.Condition;
 import org.jooq.DSLContext;
-import org.jooq.Record;
-import org.jooq.Result;
 import org.jooq.impl.DSL;
 
 public class PaginationHelper {
