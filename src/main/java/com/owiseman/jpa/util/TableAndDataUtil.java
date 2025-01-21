@@ -6,9 +6,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.log4j.Log4j;
 
-import org.gradle.internal.impldep.com.google.api.client.json.Json;
-import org.jooq.*;
+import org.jooq.Condition;
+import org.jooq.CreateTableColumnStep;
+import org.jooq.DSLContext;
+import org.jooq.DataType;
+import org.jooq.Field;
+import org.jooq.InsertValuesStepN;
 import org.jooq.Record;
+import org.jooq.Result;
+import org.jooq.SelectConditionStep;
+import org.jooq.SelectJoinStep;
+import org.jooq.SortField;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
@@ -19,9 +27,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import static org.codehaus.groovy.runtime.DefaultGroovyMethods.groupBy;
-
 
 /**
  * @author acproject@qq.com
