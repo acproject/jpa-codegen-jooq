@@ -17,5 +17,5 @@ public interface TabaleAndDataOperation {
     void updateBatchData(DSLContext dslContext, JsonNode rootNode);
     void deleteData(DSLContext dslContext, JsonNode rootNode);
     void SelectData(DSLContext dslContext, JsonNode rootNode);
-    void SelectBatchData(DSLContext dslContext, JsonNode rootNode);
+    void SelectJoinData(DSLContext dslContext, JsonNode rootNode);
 }
