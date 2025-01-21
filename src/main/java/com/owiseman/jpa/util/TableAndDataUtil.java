@@ -6,17 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.log4j.Log4j;
 
-import org.jooq.Condition;
-import org.jooq.CreateTableColumnStep;
-import org.jooq.DSLContext;
-import org.jooq.DataType;
-import org.jooq.Field;
-import org.jooq.InsertValuesStepN;
+import org.gradle.internal.impldep.com.google.api.client.json.Json;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.Result;
-import org.jooq.SelectConditionStep;
-import org.jooq.SelectHavingStep;
-import org.jooq.SelectJoinStep;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
@@ -274,6 +266,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode whereNode = rootNode.get("where");
         JsonNode groupByNode = rootNode.get("groupBy");
         JsonNode havingNode = rootNode.get("having");
+        JsonNode orderByNode = rootNode.get("orderBy");
+        JsonNode paginationNode = rootNode.get("pagination");
 
         Condition condition = DSL.noCondition();
         // 构建WHERE条件子句
@@ -320,6 +314,25 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             selectStep.having(havingCondition);
         }
 
+        // process order by
+        if (orderByNode != null) {
+            String filedName = orderByNode.get("field").asText();
+            String direction = orderByNode.get("direction").asText().toUpperCase(); // ASC or DESC
+
+            Field<?> field = DSL.field(filedName);
+            SortField<?> sortField = direction.equals("DESC") ? field.desc() : field.asc();
+            selectStep.orderBy(sortField);
+        }
+
+        // process pagination
+        if (paginationNode != null) {
+            int page = paginationNode.get("page").asInt();
+            int pageSize = paginationNode.get("pageSize").asInt();
+            int offset = (page - 1) * pageSize;
+
+            selectStep.limit(pageSize).offset(offset);
+        }
+
         Result<Record> result = selectStep.fetch();
         result.forEach(record -> {
             System.out.println(record);
@@ -333,22 +346,46 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * usage example:
      * ```json
      * {
-     * "table": "orders",
-     * "join": [
-     * {
-     * "type": "INNER",
-     * "table": "customers",
-     * "on": "orders.customer_id = customers.id"
-     * }
-     * ],
-     * "where": {
-     * "status": ["completed", "shipped"],
-     * "customers.country": "USA"
-     * },
-     * "groupBy": ["customers.id", "orders.status"],
-     * "having": {
-     * "COUNT(orders.id)": "5"
-     * }
+     *   "table": "orders",
+     *   "join": [
+     *     {
+     *       "type": "INNER",
+     *       "table": "customers",
+     *       "on": "orders.customer_id = customers.id"
+     *     }
+     *   ],
+     *   "where": {
+     *     "status": ["completed", "shipped"],
+     *     "price": {
+     *       "operator": "between",
+     *       "value": [100, 200]
+     *     },
+     *     "customers.country": {
+     *       "operator": "eq",
+     *       "value": "USA"
+     *     }
+     *   },
+     *   "groupBy": ["customers.id", "orders.status"],
+     *   "having": {
+     *     "COUNT(orders.id)": {
+     *       "operator": "gte",
+     *       "value": "5"
+     *     }
+     *   },
+     *   "orderByArr": [
+     *     {
+     *       "field": "price",
+     *       "direction": "DESC"
+     *     },
+     *     {
+     *       "field": "order_date",
+     *       "direction": "ASC"
+     *     }
+     *   ],
+     *   "pagination": {
+     *     "page": 2,
+     *     "pageSize": 10
+     *   }
      * }
      * If you have the same field name in multiple tables, we recommend that
      * you qualify the field with a table name or alias, such as orders.status
@@ -364,6 +401,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode joinArray = rootNode.get("join");
         JsonNode groupByArray = rootNode.get("groupBy");
         JsonNode havingNode = rootNode.get("having");
+        JsonNode orderByArray = rootNode.get("orderByArr");
+        JsonNode paginationNode = rootNode.get("pagination");
 
         Condition condition = DSL.noCondition();
 
@@ -460,6 +499,27 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         // Add HAVING
         if (havingCondition != DSL.noCondition()) {
             query.having(havingCondition);
+        }
+
+        // Process ORDER BY conditions
+        if (orderByArray != null) {
+            List<SortField<?>> orderByFields = new ArrayList<>();
+            for (JsonNode orderByNode : orderByArray) {
+                String fieldName = orderByNode.get("field").asText();
+                String dirction = orderByNode.get("direction").asText().toUpperCase(); // ASC or DESC
+                Field<?> field = DSL.field(fieldName);
+                SortField<?> sortField = dirction.equals("DESC") ? field.desc() : field.asc();
+                orderByFields.add(sortField);
+            }
+            query.orderBy(orderByFields);
+        }
+        // add pagination
+        if (paginationNode != null) {
+            int pageSize = paginationNode.get("pageSize").asInt();
+            int page = paginationNode.get("page").asInt();
+            int offset = (page - 1) * pageSize;
+
+            query.limit(pageSize).offset(offset);
         }
 
         Result<Record> result = query.fetch();
