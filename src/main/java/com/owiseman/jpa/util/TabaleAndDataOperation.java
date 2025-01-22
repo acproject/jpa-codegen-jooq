@@ -1,6 +1,7 @@
 package com.owiseman.jpa.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.owiseman.jpa.model.DataRecord;
 import org.jooq.DSLContext;
 
 /**
@@ -8,14 +9,14 @@ import org.jooq.DSLContext;
  * @date 2025-01-18 20:20
  */
 public interface TabaleAndDataOperation {
-    void createTable(DSLContext dslContext, JsonNode rootNode );
-    void dropTable(DSLContext dslContext, JsonNode rootNode);
-    void alterTable(DSLContext dslContext, JsonNode rootNode);
-    void insertData(DSLContext dslContext, JsonNode rootNode);
-    void insertBatchData(DSLContext dslContext, JsonNode rootNode);
-    void updateData(DSLContext dslContext, JsonNode rootNode);
-    void updateBatchData(DSLContext dslContext, JsonNode rootNode);
-    void deleteData(DSLContext dslContext, JsonNode rootNode);
-    void SelectData(DSLContext dslContext, JsonNode rootNode);
-    void SelectJoinData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord createTable(DSLContext dslContext, JsonNode rootNode );
+    DataRecord dropTable(DSLContext dslContext, JsonNode rootNode);
+    DataRecord alterTable(DSLContext dslContext, JsonNode rootNode);
+    DataRecord insertData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord insertBatchData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord updateData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord updateBatchData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord deleteData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord SelectData(DSLContext dslContext, JsonNode rootNode);
+    DataRecord SelectJoinData(DSLContext dslContext, JsonNode rootNode);
 }

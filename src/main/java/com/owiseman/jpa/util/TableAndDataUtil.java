@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
+import com.owiseman.jpa.model.DataRecord;
 import lombok.extern.log4j.Log4j;
 
 import org.jooq.Condition;
@@ -22,10 +23,7 @@ import org.jooq.impl.SQLDataType;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -54,25 +52,49 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         return instance;
     }
 
-
     public static void processRequest(DSLContext dslContext,
                                       RabbitTemplate rabbitTemplate, String json) throws Exception {
+        processRequest(dslContext, json);
+        getInstance().sendToMQ(rabbitTemplate, json);
+    }
+
+    public static DataRecord processRequest(DSLContext dslContext,
+                                       String json) throws Exception {
         JsonNode rootNode = objectMapper.readTree(json);
         String operation = rootNode.get("operation").asText();
         switch (operation) {
-            case "create_table" -> getInstance().createTable(dslContext, rootNode);
-            case "drop_table" -> getInstance().dropTable(dslContext, rootNode);
-            case "alter_table" -> getInstance().alterTable(dslContext, rootNode);
-            case "insert" -> getInstance().insertData(dslContext, rootNode);
-            case "insert_batch" -> getInstance().insertBatchData(dslContext, rootNode);
-            case "update_data" -> getInstance().updateData(dslContext, rootNode);
-            case "update_batch" -> getInstance().updateBatchData(dslContext, rootNode);
-            case "delete" -> getInstance().deleteData(dslContext, rootNode);
-            case "select" -> getInstance().SelectData(dslContext, rootNode);
-            case "select_batch" -> getInstance().SelectJoinData(dslContext, rootNode);
+            case "create_table" -> {
+               return getInstance().createTable(dslContext, rootNode);
+            }
+            case "drop_table" -> {
+                return getInstance().dropTable(dslContext, rootNode);
+            }
+            case "alter_table" -> {
+               return getInstance().alterTable(dslContext, rootNode);
+            }
+            case "insert" -> {
+               return getInstance().insertData(dslContext, rootNode);
+            }
+            case "insert_batch" -> {
+               return getInstance().insertBatchData(dslContext, rootNode);
+            }
+            case "update_data" -> {
+               return getInstance().updateData(dslContext, rootNode);
+            }
+            case "update_batch" -> {
+               return getInstance().updateBatchData(dslContext, rootNode);
+            }
+            case "delete" -> {
+                return getInstance().deleteData(dslContext, rootNode);
+            }
+            case "select" -> {
+                return getInstance().SelectData(dslContext, rootNode);
+            }
+            case "select_batch" -> {
+                return getInstance().SelectJoinData(dslContext, rootNode);
+            }
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
-        getInstance().sendToMQ(rabbitTemplate, json);
     }
 
     /**
@@ -86,7 +108,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         System.out.println("Send to MQ: " + json); // 输出到控制台，不记录到日志里
     }
 
-    public void createTable(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord createTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode columns = rootNode.get("columns");
 
@@ -98,7 +120,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             createTableStep.column(columnName, getSqlDataType(columnType));
         }
         createTableStep.execute();
+        DataRecord dataRecord = new DataRecord("create table", tableName, null);
         log.info("Create table: " + tableName);
+        return dataRecord;
     }
 
     private static DataType<?> getSqlDataType(String typeName) {
@@ -118,14 +142,15 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     }
 
     @Override
-    public void dropTable(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord dropTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         dslContext.dropTable(tableName).execute();
         log.info("Drop table: " + tableName);
+        return new DataRecord("drop table", tableName, null);
     }
 
     @Override
-    public void alterTable(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord alterTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode columns = rootNode.get("columns");
 
@@ -149,10 +174,11 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             }
         }
         log.info("Table altered: " + tableName);
+        return new DataRecord("alter table", tableName, null);
     }
 
     @Override
-    public void insertData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord insertData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataNode = rootNode.get("data");
 
@@ -163,10 +189,11 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 .set(data)
                 .execute();
         log.info("Insert data into table: " + tableName);
+        return new DataRecord("insert", tableName, null);
     }
 
     @Override
-    public void insertBatchData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord insertBatchData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataArray = rootNode.get("data");
         List<Map<String, Object>> dataList = new ArrayList<>();
@@ -187,10 +214,11 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             insertStep.execute();
             log.info("Insert batch data into table: " + tableName);
         }
+        return new DataRecord("insert batch", tableName, null);
     }
 
     @Override
-    public void updateData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord updateData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataNode = rootNode.get("data");
         JsonNode whereNode = rootNode.get("where");
@@ -206,10 +234,11 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 .where(condition)
                 .execute();
         log.info("Update data into table: " + tableName);
+        return new DataRecord("update", tableName, null);
     }
 
     @Override
-    public void updateBatchData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord updateBatchData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataArray = rootNode.get("data");
         for (JsonNode dataNode : dataArray) {
@@ -229,10 +258,11 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .execute();
         }
         log.info("Update batch data into table: " + tableName);
+        return new DataRecord("update batch", tableName, null);
     }
 
     @Override
-    public void deleteData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord deleteData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereNode = rootNode.get("where");
 
@@ -243,6 +273,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 .where(condition)
                 .execute();
         log.info("Delete data from table: " + tableName);
+        return new DataRecord("delete", tableName, null);
     }
 
     /**
@@ -266,7 +297,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * @param rootNode
      */
     @Override
-    public void SelectData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord SelectData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereNode = rootNode.get("where");
         JsonNode groupByNode = rootNode.get("groupBy");
@@ -339,10 +370,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         Result<Record> result = selectStep.fetch();
-        result.forEach(record -> {
-            System.out.println(record);
-        });
-
+        return new DataRecord("select", tableName,
+                Optional.of(result.stream().toList()));
     }
 
     /**
@@ -400,7 +429,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * @param rootNode
      */
     @Override
-    public void SelectJoinData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord SelectJoinData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereArray = rootNode.get("where");
         JsonNode joinArray = rootNode.get("join");
@@ -528,10 +557,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         Result<Record> result = query.fetch();
-        result.forEach(record -> {
-            System.out.println(record);
-        });
-
+        return new DataRecord("select join", "tables",
+                Optional.of(result.stream().toList()));
     }
 
     private Condition operatorCondition(String operator, Condition condition,
