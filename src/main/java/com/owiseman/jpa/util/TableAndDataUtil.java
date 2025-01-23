@@ -23,7 +23,8 @@ import org.jooq.impl.SQLDataType;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -263,9 +264,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     dslContext.alterTable(tableName).addColumn(columnName, dataType).execute();
                 }
                 case "set_default" -> {
-                      if (columnType == null)
+                    if (columnType == null)
                         throw new IllegalArgumentException("Column type is required for modify opertion");
-                      if (column.has("default")) {
+                    if (column.has("default")) {
                         String defaultValue = column.get("default").asText();
 //                        if (isNumber(defaultValue)) {
 //                            if (isInteger(defaultValue)) {
@@ -311,13 +312,23 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord insertData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataNode = rootNode.get("data");
+        var insertStep = dslContext.insertInto(DSL.table(tableName));
+        Map<String, Object> data = new LinkedHashMap<>();
+        dataNode.fields().forEachRemaining(entry -> {
+            var valueNode = entry.getValue().asText();
+            if (isNumber(valueNode)) {
+                if (isInteger(valueNode)) {
+                    data.put(entry.getKey(), Integer.parseInt(valueNode));
+                } else if (isFloat(valueNode)) {
+                    data.put(entry.getKey(), Double.parseDouble(valueNode));
+                }
+            } else {
+                data.put(entry.getKey(), valueNode);
+            }
 
-        Map<String, Object> data = new HashMap<>();
-        dataNode.fields().forEachRemaining(entry -> data.put(entry.getKey(),
-                entry.getValue().asText()));
-        dslContext.insertInto(DSL.table(tableName))
-                .set(data)
-                .execute();
+        });
+        var insertStepMore = insertStep.set(data);
+        insertStepMore.execute();
         log.info("Insert data into table: " + tableName);
         return new DataRecord("insert", tableName, null);
     }
@@ -329,9 +340,19 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         List<Map<String, Object>> dataList = new ArrayList<>();
 
         for (JsonNode dataNode : dataArray) {
-            Map<String, Object> data = new HashMap<>();
-            dataNode.fields().forEachRemaining(entry ->
-                    data.put(entry.getKey(), entry.getValue().asText()));
+            Map<String, Object> data = new LinkedHashMap<>();
+            dataNode.fields().forEachRemaining(entry -> {
+                var valueNode = entry.getValue().asText();
+                if (isNumber(valueNode)) {
+                    if (isInteger(valueNode)) {
+                        data.put(entry.getKey(), Integer.parseInt(valueNode));
+                    } else if (isFloat(valueNode)) {
+                        data.put(entry.getKey(), Double.parseDouble(valueNode));
+                    }
+                } else {
+                    data.put(entry.getKey(), valueNode);
+                }
+            });
             dataList.add(data);
         }
         if (!dataList.isEmpty()) {
@@ -353,7 +374,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode dataNode = rootNode.get("data");
         JsonNode whereNode = rootNode.get("where");
 
-        Map<String, Object> data = new HashMap<>();
+        Map<String, Object> data = new LinkedHashMap<>();
         dataNode.fields().forEachRemaining(entry ->
                 data.put(entry.getKey(), entry.getValue().asText()));
         Condition condition = DSL.noCondition();
@@ -375,7 +396,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             JsonNode valuesNode = dataNode.get("values");
             JsonNode whereNode = dataNode.get("where");
 
-            Map<String, Object> data = new HashMap<>();
+            Map<String, Object> data = new LinkedHashMap<>();
             valuesNode.fields().forEachRemaining(entry ->
                     data.put(entry.getKey(), entry.getValue().asText()));
             Condition condition = DSL.noCondition();
