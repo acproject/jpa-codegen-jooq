@@ -143,12 +143,12 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 String defaultValue = column.get("default").asText();
                 if (isNumber(defaultValue)) {
                     if (isInteger(defaultValue)) {
-                     dataType =  dataType.defaultValue(DSL.val(defaultValue));
+                        dataType = dataType.defaultValue(DSL.val(defaultValue));
                     } else if (isFloat(defaultValue)) {
-                      dataType =   dataType.default_(Double.valueOf(defaultValue));
+                        dataType = dataType.defaultValue(DSL.val(defaultValue));
                     }
                 } else {
-                 dataType =   dataType.defaultValue(DSL.val(defaultValue));
+                    dataType = dataType.defaultValue(DSL.val(defaultValue));
                 }
 
             }
@@ -227,16 +227,77 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             String columnName = column.get("name").asText();
             String operation = column.has("operation") ? column.get("operation").asText() : "add";
             String columnType = column.get("type").asText();
+            var dataType = getSqlDataType(columnType);
+            var alterColumn = dslContext.alterTable(tableName).alterColumn(columnName);
             switch (operation.toLowerCase()) {
                 case "add" -> {
                     if (columnType == null)
                         throw new IllegalArgumentException("Column type is required for add opertion");
-                    dslContext.alterTable(tableName).addColumn(columnName, getSqlDataType(columnType)).execute();
+                    if (column.has("length")) {
+                        int length = column.get("length").asInt();
+                        dataType = dataType.length(length);
+                    }
+                    if (column.has("null")) {
+                        boolean nullable = column.get("null").asBoolean();
+                        if (nullable) {
+                            dataType.nullable(true);
+                            dataType = dataType.null_();
+                        } else {
+                            dataType.nullable(false);
+                            dataType = dataType.notNull();
+                        }
+                    }
+                    if (column.has("default")) {
+                        String defaultValue = column.get("default").asText();
+                        if (isNumber(defaultValue)) {
+                            if (isInteger(defaultValue)) {
+                                dataType = dataType.defaultValue(DSL.val(defaultValue));
+                            } else if (isFloat(defaultValue)) {
+                                dataType = dataType.defaultValue(DSL.val(defaultValue));
+                            }
+                        } else {
+                            dataType = dataType.defaultValue(DSL.val(defaultValue));
+                        }
+
+                    }
+                    dslContext.alterTable(tableName).addColumn(columnName, dataType).execute();
+                }
+                case "set_default" -> {
+                      if (columnType == null)
+                        throw new IllegalArgumentException("Column type is required for modify opertion");
+                      if (column.has("default")) {
+                        String defaultValue = column.get("default").asText();
+//                        if (isNumber(defaultValue)) {
+//                            if (isInteger(defaultValue)) {
+//                                dataType = dataType.defaultValue(DSL.val(defaultValue));
+//                            } else if (isFloat(defaultValue)) {
+//                                dataType = dataType.defaultValue(DSL.val(defaultValue));
+//                            }
+//                        } else {
+//                            dataType = dataType.defaultValue(DSL.val(defaultValue));
+//                        }
+                        alterColumn.setDefault(DSL.val(defaultValue)).execute();
+                    }
                 }
                 case "modify" -> {
                     if (columnType == null)
                         throw new IllegalArgumentException("Column type is required for modify opertion");
-                    dslContext.alterTable(tableName).alterColumn(columnName).set(getSqlDataType(columnType)).execute();
+                    if (column.has("null")) {
+                        boolean nullable = column.get("null").asBoolean();
+                        if (nullable) {
+                            dataType.nullable(true);
+                            dataType = dataType.null_();
+                        } else {
+                            dataType.nullable(false);
+                            dataType = dataType.notNull();
+                        }
+                    }
+                    if (column.has("length")) {
+                        int length = column.get("length").asInt();
+                        dataType = dataType.length(length);
+                    }
+
+                    alterColumn.set(dataType).execute();
                 }
                 case "drop" -> dslContext.alterTable(tableName).dropColumn(columnName).execute();
                 default -> throw new IllegalArgumentException("Column type is required for add opertion");
