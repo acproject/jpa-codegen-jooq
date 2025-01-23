@@ -8,7 +8,6 @@ import com.owiseman.jpa.model.DataRecord;
 import lombok.extern.log4j.Log4j;
 
 import org.jooq.Condition;
-import org.jooq.CreateTableColumnStep;
 import org.jooq.DSLContext;
 import org.jooq.DataType;
 import org.jooq.Field;
@@ -111,14 +110,53 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord createTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode columns = rootNode.get("columns");
+        JsonNode primaryKeysNode = rootNode.get("primary_keys");
+        JsonNode uniqueKeysNode = rootNode.get("unique_keys");
 
-        CreateTableColumnStep createTableStep = dslContext.createTable(tableName);
+        var createTableStep = dslContext.createTableIfNotExists(tableName);
 
         for (JsonNode column : columns) {
             String columnName = column.get("name").asText();
             String columnType = column.get("type").asText();
-            createTableStep.column(columnName, getSqlDataType(columnType));
+            var dataType = getSqlDataType(columnType);
+            if (column.has("length")) {
+                int length = column.get("length").asInt();
+                dataType = dataType.length(length);
+            }
+            createTableStep.column(columnName, dataType);
         }
+         List<String> primaryKeys = new ArrayList<>();
+        if (primaryKeysNode != null && primaryKeysNode.isArray()) {
+
+            for (JsonNode pk : primaryKeysNode) {
+                primaryKeys.add(pk.asText());
+            }
+
+        } else {
+            for (JsonNode column : columns) {
+              if (column.has("primary_key") && column.get("primary_key").asBoolean()) {
+                 primaryKeys.add(column.get("name").asText());
+              }
+            }
+        }
+
+        if (!primaryKeys.isEmpty()) {
+            createTableStep.constraint(DSL.constraint("pk_" + tableName)
+                    .primaryKey(getAllPrimaryKeys(primaryKeys)));
+        }
+
+        if (uniqueKeysNode != null && uniqueKeysNode.isArray()) {
+            for (JsonNode uniqueKeyNode : uniqueKeysNode) {
+                String uniqueKeyName = uniqueKeyNode.get("name").asText();
+                List<String> uniqueColumns = new ArrayList<>();
+                for (JsonNode columnNode : uniqueKeyNode.get("columns")) {
+                    uniqueColumns.add(columnNode.asText());
+                }
+                createTableStep.constraint(
+                        DSL.constraint(uniqueKeyName).unique(getAllPrimaryKeys(uniqueColumns)));
+            }
+        }
+
         createTableStep.execute();
         DataRecord dataRecord = new DataRecord("create table", tableName, null);
         log.info("Create table: " + tableName);
@@ -127,12 +165,12 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
     private static DataType<?> getSqlDataType(String typeName) {
         return switch (typeName) {
-            case "int", "java.lang.Integer" -> SQLDataType.INTEGER;
+            case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
             case "long", "java.lang.Long" -> SQLDataType.BIGINT;
-            case "String", "java.lang.String" -> SQLDataType.VARCHAR;
-            case "LocalDate", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
+            case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
+            case "LocalDate","LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
             case "LocalDateTime", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
-            case "LocalTime", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
+            case "LocalTime","LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
             case "OffsetDateTime", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
             case "JSONB", "org.jooq.JSONB" -> SQLDataType.JSONB;
             case "Boolean", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
@@ -600,5 +638,13 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             }
             default -> throw new IllegalArgumentException("Unsupported operator: " + operator);
         }
+    }
+
+    private static String[] getAllPrimaryKeys(List<String> keys) {
+        StringBuilder sb = new StringBuilder();
+        for (String key : keys) {
+            sb.append(key).append(",");
+        }
+        return sb.toString().split(",");
     }
 }
