@@ -22,8 +22,14 @@ import org.jooq.impl.SQLDataType;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static org.jooq.impl.SQLDataType.INTEGER;
 
 /**
  * @author acproject@qq.com
@@ -58,30 +64,30 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     }
 
     public static DataRecord processRequest(DSLContext dslContext,
-                                       String json) throws Exception {
+                                            String json) throws Exception {
         JsonNode rootNode = objectMapper.readTree(json);
         String operation = rootNode.get("operation").asText();
         switch (operation) {
             case "create_table" -> {
-               return getInstance().createTable(dslContext, rootNode);
+                return getInstance().createTable(dslContext, rootNode);
             }
             case "drop_table" -> {
                 return getInstance().dropTable(dslContext, rootNode);
             }
             case "alter_table" -> {
-               return getInstance().alterTable(dslContext, rootNode);
+                return getInstance().alterTable(dslContext, rootNode);
             }
             case "insert" -> {
-               return getInstance().insertData(dslContext, rootNode);
+                return getInstance().insertData(dslContext, rootNode);
             }
             case "insert_batch" -> {
-               return getInstance().insertBatchData(dslContext, rootNode);
+                return getInstance().insertBatchData(dslContext, rootNode);
             }
             case "update_data" -> {
-               return getInstance().updateData(dslContext, rootNode);
+                return getInstance().updateData(dslContext, rootNode);
             }
             case "update_batch" -> {
-               return getInstance().updateBatchData(dslContext, rootNode);
+                return getInstance().updateBatchData(dslContext, rootNode);
             }
             case "delete" -> {
                 return getInstance().deleteData(dslContext, rootNode);
@@ -123,9 +129,34 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 int length = column.get("length").asInt();
                 dataType = dataType.length(length);
             }
+            if (column.has("null")) {
+                boolean nullable = column.get("null").asBoolean();
+                if (nullable) {
+                    dataType.nullable(true);
+                    dataType = dataType.null_();
+                } else {
+                    dataType.nullable(false);
+                    dataType = dataType.notNull();
+                }
+            }
+            if (column.has("default")) {
+                String defaultValue = column.get("default").asText();
+                if (isNumber(defaultValue)) {
+                    if (isInteger(defaultValue)) {
+                     dataType =  dataType.defaultValue(DSL.val(defaultValue));
+                    } else if (isFloat(defaultValue)) {
+                      dataType =   dataType.default_(Double.valueOf(defaultValue));
+                    }
+                } else {
+                 dataType =   dataType.defaultValue(DSL.val(defaultValue));
+                }
+
+            }
             createTableStep.column(columnName, dataType);
         }
-         List<String> primaryKeys = new ArrayList<>();
+
+        List<String> primaryKeys = new ArrayList<>();
+
         if (primaryKeysNode != null && primaryKeysNode.isArray()) {
 
             for (JsonNode pk : primaryKeysNode) {
@@ -134,9 +165,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         } else {
             for (JsonNode column : columns) {
-              if (column.has("primary_key") && column.get("primary_key").asBoolean()) {
-                 primaryKeys.add(column.get("name").asText());
-              }
+                if (column.has("primary_key") && column.get("primary_key").asBoolean()) {
+                    primaryKeys.add(column.get("name").asText());
+                }
             }
         }
 
@@ -163,14 +194,14 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         return dataRecord;
     }
 
-    private static DataType<?> getSqlDataType(String typeName) {
+    private static DataType getSqlDataType(String typeName) {
         return switch (typeName) {
-            case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
+            case "int", "java.lang.Integer", "INTEGER" -> INTEGER;
             case "long", "java.lang.Long" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
-            case "LocalDate","LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
+            case "LocalDate", "LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
             case "LocalDateTime", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
-            case "LocalTime","LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
+            case "LocalTime", "LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
             case "OffsetDateTime", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
             case "JSONB", "org.jooq.JSONB" -> SQLDataType.JSONB;
             case "Boolean", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
@@ -182,7 +213,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     @Override
     public DataRecord dropTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
-        dslContext.dropTable(tableName).execute();
+        dslContext.dropDatabaseIfExists(tableName).execute();
         log.info("Drop table: " + tableName);
         return new DataRecord("drop table", tableName, null);
     }
@@ -418,46 +449,46 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * usage example:
      * ```json
      * {
-     *   "table": "orders",
-     *   "join": [
-     *     {
-     *       "type": "INNER",
-     *       "table": "customers",
-     *       "on": "orders.customer_id = customers.id"
-     *     }
-     *   ],
-     *   "where": {
-     *     "status": ["completed", "shipped"],
-     *     "price": {
-     *       "operator": "between",
-     *       "value": [100, 200]
-     *     },
-     *     "customers.country": {
-     *       "operator": "eq",
-     *       "value": "USA"
-     *     }
-     *   },
-     *   "groupBy": ["customers.id", "orders.status"],
-     *   "having": {
-     *     "COUNT(orders.id)": {
-     *       "operator": "gte",
-     *       "value": "5"
-     *     }
-     *   },
-     *   "orderByArr": [
-     *     {
-     *       "field": "price",
-     *       "direction": "DESC"
-     *     },
-     *     {
-     *       "field": "order_date",
-     *       "direction": "ASC"
-     *     }
-     *   ],
-     *   "pagination": {
-     *     "page": 2,
-     *     "pageSize": 10
-     *   }
+     * "table": "orders",
+     * "join": [
+     * {
+     * "type": "INNER",
+     * "table": "customers",
+     * "on": "orders.customer_id = customers.id"
+     * }
+     * ],
+     * "where": {
+     * "status": ["completed", "shipped"],
+     * "price": {
+     * "operator": "between",
+     * "value": [100, 200]
+     * },
+     * "customers.country": {
+     * "operator": "eq",
+     * "value": "USA"
+     * }
+     * },
+     * "groupBy": ["customers.id", "orders.status"],
+     * "having": {
+     * "COUNT(orders.id)": {
+     * "operator": "gte",
+     * "value": "5"
+     * }
+     * },
+     * "orderByArr": [
+     * {
+     * "field": "price",
+     * "direction": "DESC"
+     * },
+     * {
+     * "field": "order_date",
+     * "direction": "ASC"
+     * }
+     * ],
+     * "pagination": {
+     * "page": 2,
+     * "pageSize": 10
+     * }
      * }
      * If you have the same field name in multiple tables, we recommend that
      * you qualify the field with a table name or alias, such as orders.status
@@ -491,10 +522,10 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                         values.add(value.asText());
                         condition.and(DSL.field(entry.getKey()).in(values));
                     });
-                } else if(conditionNode.isObject()) {
+                } else if (conditionNode.isObject()) {
                     operatorCondition(conditionNode.get("operator").asText(),
                             condition, conditionNode, fieldName);
-                }else {
+                } else {
                     // Process `=` condition
                     condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText()));
                 }
@@ -565,7 +596,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         // Add GROUP BY
         if (!groupByFields.isEmpty()) {
-           query.groupBy(groupByFields);
+            query.groupBy(groupByFields);
         }
 
         // Add HAVING
@@ -646,5 +677,20 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             sb.append(key).append(",");
         }
         return sb.toString().split(",");
+    }
+
+    private static boolean isNumber(String str) {
+        String numberPattern = "^[-+]?\\d*\\.?\\d+$";
+        return str.matches(numberPattern);
+    }
+
+    private static boolean isInteger(String str) {
+        String integerPattern = "^[-+]?\\d+$";
+        return str.matches(integerPattern);
+    }
+
+    private static boolean isFloat(String str) {
+        String floatPattern = "^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$";
+        return str.matches(floatPattern);
     }
 }
