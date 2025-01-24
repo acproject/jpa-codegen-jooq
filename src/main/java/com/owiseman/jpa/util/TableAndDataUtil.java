@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static org.jooq.impl.SQLDataType.INTEGER;
 
 /**
  * @author acproject@qq.com
@@ -130,6 +129,15 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 int length = column.get("length").asInt();
                 dataType = dataType.length(length);
             }
+
+            if (column.has("auto_increment") && column.get("auto_increment").asBoolean()) {
+                dataType = dataType.identity(true);
+            }
+
+            if (column.has("uuid") && column.get("uuid").asBoolean()) {
+                dataType = dataType.defaultValue(DSL.uuid());
+            }
+
             if (column.has("null")) {
                 boolean nullable = column.get("null").asBoolean();
                 if (nullable) {
@@ -197,7 +205,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
     private static DataType getSqlDataType(String typeName) {
         return switch (typeName) {
-            case "int", "java.lang.Integer", "INTEGER" -> INTEGER;
+            case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
             case "long", "java.lang.Long" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
             case "LocalDate", "LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
@@ -207,6 +215,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "JSONB", "org.jooq.JSONB" -> SQLDataType.JSONB;
             case "Boolean", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
             case "JSON", "org.jooq.JSON" -> SQLDataType.JSON;
+            case "UUID" -> SQLDataType.UUID;
+            case "GEOGRAPHY" -> SQLDataType.GEOGRAPHY;
+            case "GEOMETRY" -> SQLDataType.GEOMETRY;
             default -> SQLDataType.OTHER;
         };
     }
@@ -238,6 +249,15 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                         int length = column.get("length").asInt();
                         dataType = dataType.length(length);
                     }
+
+                    if (column.has("auto_increment") && column.get("auto_increment").asBoolean()) {
+                        dataType = dataType.identity(true);
+                    }
+
+                    if (column.has("uuid") && column.get("uuid").asBoolean()) {
+                        dataType = dataType.defaultValue(DSL.uuid());
+                    }
+
                     if (column.has("null")) {
                         boolean nullable = column.get("null").asBoolean();
                         if (nullable) {
@@ -268,15 +288,6 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                         throw new IllegalArgumentException("Column type is required for modify opertion");
                     if (column.has("default")) {
                         String defaultValue = column.get("default").asText();
-//                        if (isNumber(defaultValue)) {
-//                            if (isInteger(defaultValue)) {
-//                                dataType = dataType.defaultValue(DSL.val(defaultValue));
-//                            } else if (isFloat(defaultValue)) {
-//                                dataType = dataType.defaultValue(DSL.val(defaultValue));
-//                            }
-//                        } else {
-//                            dataType = dataType.defaultValue(DSL.val(defaultValue));
-//                        }
                         alterColumn.setDefault(DSL.val(defaultValue)).execute();
                     }
                 }
@@ -298,6 +309,16 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                         dataType = dataType.length(length);
                     }
 
+                    if (column.has("auto_increment") && column.get("auto_increment").asBoolean()) {
+                        if (column.has("primary_key") && column.get("primary_key").asBoolean()) {
+                            modifyPrimaryKeyToAutoIncrement(dslContext, tableName, column.get("name").asText());
+                        }
+                    }
+
+                    if (column.has("uuid") && column.get("uuid").asBoolean()) {
+                        dataType = dataType.defaultValue(DSL.uuid());
+                    }
+
                     alterColumn.set(dataType).execute();
                 }
                 case "drop" -> dslContext.alterTable(tableName).dropColumn(columnName).execute();
@@ -312,7 +333,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord insertData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataNode = rootNode.get("data");
-        var insertStep = dslContext.insertInto(DSL.table(tableName));
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+
         Map<String, Object> data = new LinkedHashMap<>();
         dataNode.fields().forEachRemaining(entry -> {
             var valueNode = entry.getValue().asText();
@@ -327,8 +350,20 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             }
 
         });
-        var insertStepMore = insertStep.set(data);
-        insertStepMore.execute();
+        // use transaction
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                DSLContext txContext = DSL.using(configuration);
+                txContext.insertInto(DSL.table(tableName))
+                        .set(data)
+                        .execute();
+            });
+        } else {
+            var insertStep = dslContext.insertInto(DSL.table(tableName));
+            var insertStepMore = insertStep.set(data);
+            insertStepMore.execute();
+        }
+
         log.info("Insert data into table: " + tableName);
         return new DataRecord("insert", tableName, null);
     }
@@ -337,6 +372,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord insertBatchData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataArray = rootNode.get("data");
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
         List<Map<String, Object>> dataList = new ArrayList<>();
 
         for (JsonNode dataNode : dataArray) {
@@ -355,15 +392,31 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             });
             dataList.add(data);
         }
-        if (!dataList.isEmpty()) {
-            InsertValuesStepN<Record> insertStep = dslContext.insertInto(DSL.table(tableName))
-                    .columns(dataList.getFirst().keySet().stream().map(DSL::field).collect(Collectors.toList()));
 
-            for (Map<String, Object> data : dataList) {
-                insertStep.values(data.values().toArray());
+        if (useTransaction) {
+            if (!dataList.isEmpty()) {
+                dslContext.transaction(configuration -> {
+                    DSLContext txContext = DSL.using(configuration);
+                    InsertValuesStepN<Record> insertStep = txContext.insertInto(DSL.table(tableName))
+                            .columns(dataList.getFirst().keySet().stream().map(DSL::field).collect(Collectors.toList()));
+                    for (Map<String, Object> data : dataList) {
+                        insertStep.values(data.values().toArray());
+                    }
+                    insertStep.execute();
+                    log.info("Insert batch data into table: " + tableName);
+                });
             }
-            insertStep.execute();
-            log.info("Insert batch data into table: " + tableName);
+        } else {
+            if (!dataList.isEmpty()) {
+                InsertValuesStepN<Record> insertStep = dslContext.insertInto(DSL.table(tableName))
+                        .columns(dataList.getFirst().keySet().stream().map(DSL::field).collect(Collectors.toList()));
+
+                for (Map<String, Object> data : dataList) {
+                    insertStep.values(data.values().toArray());
+                }
+                insertStep.execute();
+                log.info("Insert batch data into table: " + tableName);
+            }
         }
         return new DataRecord("insert batch", tableName, null);
     }
@@ -774,5 +827,18 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     private static boolean isFloat(String str) {
         String floatPattern = "^[-+]?\\d*\\.?\\d+([eE][-+]?\\d+)?$";
         return str.matches(floatPattern);
+    }
+
+    private static void modifyPrimaryKeyToAutoIncrement(DSLContext dslContext, String tableName, String primaryKeyColumn) {
+        // 1. 删除主键约束
+        dslContext.alterTable(tableName)
+                .dropConstraintIfExists("pk_" + tableName).execute();
+        // 2. 修改主键为自增主键
+        String alterColumnSql = String.format("ALTER TABLE %s MODIFY COLUMN %s INT AUTO_INCREMENT", tableName, primaryKeyColumn);
+        dslContext.execute(alterColumnSql);
+
+        // 3. 重新添加主键约束
+        dslContext.alterTable(tableName)
+                .add(DSL.constraint("pk_" + tableName).primaryKey(primaryKeyColumn)).execute();
     }
 }
