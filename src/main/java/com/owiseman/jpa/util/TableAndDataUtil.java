@@ -7,27 +7,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.owiseman.jpa.model.DataRecord;
 import lombok.extern.log4j.Log4j;
 
-import org.jooq.Condition;
-import org.jooq.DSLContext;
-import org.jooq.DataType;
-import org.jooq.Field;
-import org.jooq.InsertValuesStepN;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.Result;
-import org.jooq.SelectConditionStep;
-import org.jooq.SelectJoinStep;
-import org.jooq.SortField;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-import java.util.ArrayList;
+import java.util.*;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 
@@ -425,19 +413,39 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord updateData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataNode = rootNode.get("data");
-        JsonNode whereNode = rootNode.get("where");
+        JsonNode whereArray = rootNode.get("where");
+
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
 
         Map<String, Object> data = new LinkedHashMap<>();
         dataNode.fields().forEachRemaining(entry ->
                 data.put(entry.getKey(), entry.getValue().asText()));
+        List<Condition> conditions = new ArrayList<>();
         Condition condition = DSL.noCondition();
-        whereNode.fields().forEachRemaining(entry ->
-                condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
-        dslContext.update(DSL.table(tableName))
-                .set(data)
-                .where(condition)
-                .execute();
-        log.info("Update data into table: " + tableName);
+        if (whereArray != null && whereArray.isArray()) {
+            for (JsonNode whereNode : whereArray) {
+                var operation = whereNode.get("operation").asText();
+                var operationName = whereNode.get("name").asText();
+                conditions.add(operatorCondition(operation, condition, whereNode, operationName));
+            }
+        }
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                DSLContext txContext = DSL.using(configuration);
+                txContext.update(DSL.table(tableName))
+                        .set(data)
+                        .where(conditions)
+                        .execute();
+                log.info("Update data into table: " + tableName);
+            });
+        } else {
+            dslContext.update(DSL.table(tableName))
+                    .set(data)
+                    .where(conditions)
+                    .execute();
+            log.info("Update data into table: " + tableName);
+        }
         return new DataRecord("update", tableName, null);
     }
 
@@ -445,23 +453,41 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord updateBatchData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode dataArray = rootNode.get("data");
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        List<Condition> conditions = new ArrayList<>();
         for (JsonNode dataNode : dataArray) {
             JsonNode valuesNode = dataNode.get("values");
-            JsonNode whereNode = dataNode.get("where");
+            JsonNode whereArray = rootNode.get("where");
 
             Map<String, Object> data = new LinkedHashMap<>();
             valuesNode.fields().forEachRemaining(entry ->
                     data.put(entry.getKey(), entry.getValue().asText()));
             Condition condition = DSL.noCondition();
-            whereNode.fields().forEachRemaining(entry ->
-                    condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
+            if (whereArray != null && whereArray.isArray()) {
+                for (JsonNode whereNode : whereArray) {
+                    var operation = whereNode.get("operation").asText();
+                    var operationName = whereNode.get("name").asText();
+                    conditions.add(operatorCondition(operation, condition, whereNode, operationName));
+                }
+            }
+            if (useTransaction) {
+                dslContext.transaction(configuration -> {
+                    DSLContext txContext = DSL.using(configuration);
+                    txContext.update(DSL.table(tableName))
+                            .set(data)
+                            .where(condition).execute();
 
-            dslContext.update(DSL.table(tableName))
-                    .set(data)
-                    .where(condition)
-                    .execute();
+                });
+            } else {
+                dslContext.update(DSL.table(tableName))
+                        .set(data)
+                        .where(condition)
+                        .execute();
+            }
+            log.info("Update batch data into table: " + tableName);
         }
-        log.info("Update batch data into table: " + tableName);
+
         return new DataRecord("update batch", tableName, null);
     }
 
@@ -469,13 +495,24 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     public DataRecord deleteData(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereNode = rootNode.get("where");
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
 
         Condition condition = DSL.noCondition();
         whereNode.fields().forEachRemaining(entry ->
                 condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
-        dslContext.deleteFrom(DSL.table(tableName))
-                .where(condition)
-                .execute();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                DSLContext txContext = DSL.using(configuration);
+                txContext.deleteFrom(DSL.table(tableName))
+                        .where(condition)
+                        .execute();
+            });
+        } else {
+            dslContext.deleteFrom(DSL.table(tableName))
+                    .where(condition)
+                    .execute();
+        }
         log.info("Delete data from table: " + tableName);
         return new DataRecord("delete", tableName, null);
     }
@@ -769,34 +806,95 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                                         JsonNode valueNode, String fieldName) {
         switch (operator) {
             case "eq" -> {
-                condition.and(DSL.field(fieldName).eq(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).eq(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).eq(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).eq(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "neq" -> {
-                condition.and(DSL.field(fieldName).ne(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).ne(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).ne(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).ne(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "gt" -> {
-                condition.and(DSL.field(fieldName).gt(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).gt(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).gt(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).gt(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "lt" -> {
-                condition.and(DSL.field(fieldName).lt(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).lt(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).lt(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).lt(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "gte" -> {
-                condition.and(DSL.field(fieldName).ge(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).ge(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).ge(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).ge(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "lte" -> {
-                condition.and(DSL.field(fieldName).le(valueNode.asText()));
+                if (isNumber(valueNode.get("value").asText())) {
+                    if (isInteger(valueNode.get("value").asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).le(valueNode.get("value").asInt()));
+                    } else if (isFloat(valueNode.get("value").asText())) {
+                        condition = DSL.field(fieldName).le(valueNode.get("value").asDouble());
+                    } else {
+                        condition = DSL.field(fieldName).le(valueNode.get("value").asText());
+                    }
+                }
                 return condition;
             }
             case "between" -> {
-                if (valueNode.isArray() && valueNode.size() == 2) {
-                    String lowerBound = valueNode.get(0).asText();
-                    String upperBound = valueNode.get(1).asText();
-                    condition.and(DSL.field(fieldName).between(lowerBound, upperBound));
+                if (valueNode.get("value").isArray() && valueNode.get("value").size() == 2) {
+                    if (isNumber(valueNode.get("value").get(0).asText()) && isNumber(valueNode.get("value").get(1).asText())) {
+                        if (isInteger(valueNode.get("value").get(0).asText()) && isInteger(valueNode.get("value").get(1).asText())) {
+                            int lowerBound = valueNode.get("value").get(0).asInt();
+                            int upperBound = valueNode.get("value").get(1).asInt();
+                            condition = DSL.field(fieldName).between(lowerBound, upperBound);
+                        }
+                    } else if (isFloat(valueNode.get("value").get(0).asText()) && isFloat(valueNode.get("value").get(1).asText())) {
+                        double lowerBound = valueNode.get("value").get(0).asDouble();
+                        double upperBound = valueNode.get("value").get(1).asDouble();
+                        condition = DSL.field(fieldName).between(lowerBound, upperBound);
+                    } else {
+                        String lowerBound = valueNode.get("value").get(0).asText();
+                        String upperBound = valueNode.get("value").get(1).asText();
+                        condition = DSL.field(fieldName).between(lowerBound, upperBound);
+                    }
+
                     return condition;
                 } else {
                     throw new IllegalArgumentException("Invalid value for 'between' operator: " + valueNode);
