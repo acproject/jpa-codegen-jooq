@@ -14,8 +14,12 @@ import org.jooq.impl.SQLDataType;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 
-import java.util.*;
-
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 
@@ -81,10 +85,22 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 return getInstance().deleteData(dslContext, rootNode);
             }
             case "select" -> {
-                return getInstance().SelectData(dslContext, rootNode);
+                return getInstance().selectData(dslContext, rootNode);
             }
             case "select_batch" -> {
-                return getInstance().SelectJoinData(dslContext, rootNode);
+                return getInstance().selectJoinData(dslContext, rootNode);
+            }
+
+            case "add_foreign" -> {
+                return getInstance().addForeignKey(dslContext, rootNode);
+            }
+
+            case "create_index" -> {
+                return getInstance().createIndex(dslContext, rootNode);
+            }
+
+            case "drop_index" -> {
+                return getInstance().dropIndex(dslContext, rootNode);
             }
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
@@ -538,7 +554,36 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * @param rootNode
      */
     @Override
-    public DataRecord SelectData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord selectData(DSLContext dslContext, JsonNode rootNode) {
+       boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(selectDataLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(selectDataLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    @Override
+    public DataRecord selectJoinData(DSLContext dslContext, JsonNode rootNode) {
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(selectJoinDataLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(selectJoinDataLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    public DataRecord selectDataLogic(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereNode = rootNode.get("where");
         JsonNode groupByNode = rootNode.get("groupBy");
@@ -669,8 +714,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * @param dslContext
      * @param rootNode
      */
-    @Override
-    public DataRecord SelectJoinData(DSLContext dslContext, JsonNode rootNode) {
+    public DataRecord selectJoinDataLogic(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode whereArray = rootNode.get("where");
         JsonNode joinArray = rootNode.get("join");
@@ -800,6 +844,180 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         Result<Record> result = query.fetch();
         return new DataRecord("select join", "tables",
                 Optional.of(result.stream().toList()));
+    }
+
+    @Override
+    public DataRecord addForeignKey(DSLContext dslContext, JsonNode rootNode) {
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(addForeignKeyLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(addForeignKeyLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    @Override
+    public DataRecord createIndex(DSLContext dslContext, JsonNode rootNode) {
+        // 判断是否需要启用事务
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(createIndexLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(createIndexLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    @Override
+    public DataRecord dropIndex(DSLContext dslContext, JsonNode rootNode) {
+        // 判断是否需要启用事务
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(dropIndexLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(dropIndexLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    private DataRecord createIndexLogic(DSLContext dslContext, JsonNode rootNode) {
+        String tableName = rootNode.get("table").asText();
+        String indexName = rootNode.get("index_name").asText();
+//        String indexType = rootNode.has("index_type") ?
+//                rootNode.get("index_type").asText() : "BTREE";
+        JsonNode columnsNode = rootNode.get("columns");
+        if (columnsNode == null || !columnsNode.isArray() || columnsNode.size() == 0) {
+            log.warn("No columns defined for index: " + indexName);
+            throw new IllegalArgumentException("No columns defined for index: " + indexName);
+        }
+        List<String> columns = new ArrayList<>();
+        for (JsonNode columnNode : columnsNode) {
+            columns.add(columnNode.asText());
+        }
+
+        // 判断是否是唯一索引
+        boolean isUnique = rootNode.has("unique") && rootNode.get("unique").asBoolean();
+
+        if (isUnique) {
+            dslContext.createUniqueIndex(indexName)
+                    .on(tableName, columns.toArray(new String[0])).execute();
+            log.info("Create unique index: " + indexName);
+            return new DataRecord("create unique index", indexName,
+                    Optional.empty());
+        } else {
+            // 创建索引
+            dslContext.createIndex(indexName)
+                    .on(tableName, columns.toArray(new String[0])).execute();
+            log.info("Create index: " + indexName);
+            return new DataRecord("create index", indexName,
+                    Optional.empty());
+        }
+
+        // 设置索引类型 ：目前jooq还不支持设置类型，后面主要功能后，再来实现
+//        if ("BTREE".equalsIgnoreCase(indexType)) {
+//            // todo
+//        } else if ("HASH".equalsIgnoreCase(indexType)) {
+//            // todo
+//        } else if ("GIN".equalsIgnoreCase(indexType)) {
+//            // todo
+//        } else if ("GIST".equalsIgnoreCase(indexType)) {
+//            // todo
+//        } else {
+//            throw new IllegalArgumentException("Unsupported index type: " + indexType);
+//        }
+    }
+
+    private DataRecord dropIndexLogic(DSLContext dslContext, JsonNode rootNode) {
+        String tableName = rootNode.get("table").asText();
+        String indexName = rootNode.get("index_name").asText();
+
+        dslContext.dropIndexIfExists(indexName).on(tableName).execute();
+        log.info("Drop index: " + indexName);
+        return new DataRecord("drop index", indexName,
+                Optional.empty());
+    }
+
+    private DataRecord addForeignKeyLogic(DSLContext dslContext, JsonNode rootNode) {
+        String tableName = rootNode.get("table").asText();
+        String relationType = rootNode.get("relation_type").asText();
+        JsonNode foreignKeyNode = rootNode.get("foreign_key");
+
+        if (foreignKeyNode == null || foreignKeyNode.isArray()) {
+            log.warn("No foreign keys defined for table: " + tableName);
+            return new DataRecord("No foreign keys defined for table: ", tableName, Optional.empty());
+        }
+        if ("N-N".equals(relationType)) {
+            return createIntermediateTable(dslContext, tableName, foreignKeyNode);
+        }
+
+        // process 1-N or N-1
+        for (JsonNode foreignKey : foreignKeyNode) {
+            String foreignKeyName = foreignKey.get("name").asText();
+            String column = foreignKeyNode.get("column").asText();
+            String referencedTable = foreignKey.get("referenced_table").asText();
+            String referencedColumn = foreignKey.get("referenced_column").asText();
+
+            // create foreign key constraint
+            ConstraintForeignKeyOnStep constraint = DSL.constraint(foreignKeyName)
+                    .foreignKey(column).references(referencedTable, referencedColumn);
+
+            // 处理级联操作
+            if (foreignKey.has("on_delete")) {
+
+                constraint = getReferentialAction(constraint,
+                        foreignKey.asText(), foreignKey.get("on_delete").asText());
+            }
+
+            if (foreignKey.has("on_update")) {
+                constraint = getReferentialAction(constraint,
+                        foreignKey.asText(), foreignKey.get("on_update").asText());
+            }
+            dslContext.alterTable(tableName)
+                    .add(constraint).execute();
+            log.info("Added foreign key constraint: " + foreignKeyName + " to table: " + tableName);
+        }
+        return new DataRecord("add foreign key", tableName, Optional.empty());
+    }
+
+    private DataRecord createIntermediateTable(DSLContext dslContext, String tableName, JsonNode foreignKeysNode) {
+        String intermediateTableName = tableName + "_" + foreignKeysNode.get("name").asText();
+        // 创建中间表
+        var createTableStep = dslContext.createTableIfNotExists(intermediateTableName);
+        List<String> primaryKeys = new ArrayList<>();
+        for (JsonNode foreignKeyNode : foreignKeysNode) {
+            String column = foreignKeyNode.get("column").asText();
+            String referencedTable = foreignKeyNode.get("referenced_table").asText();
+            String referencedColumn = foreignKeyNode.get("referenced_column").asText();
+            String columnType = foreignKeyNode.get("column_type").asText();
+            // 添加列
+            createTableStep.column(column, getSqlDataType(columnType).nullable(false));
+
+            // 添加外键约束
+            String foreignKeyName = foreignKeyNode.get("name").asText();
+            createTableStep.constraint(DSL.constraint(foreignKeyName)
+                    .foreignKey(column).references(referencedTable, referencedColumn));
+            primaryKeys.add(column); // 将列名添加到主键列表中
+
+            // 设置复合主键
+            createTableStep.constraint(DSL.constraint("pk_" + intermediateTableName)
+                            .primaryKey(primaryKeys.toArray(new String[0])))
+                    .execute();
+            log.info("Created intermediate table: " + intermediateTableName);
+        }
+        return new DataRecord("create intermediate table", intermediateTableName, Optional.empty());
     }
 
     private Condition operatorCondition(String operator, Condition condition,
@@ -938,5 +1156,33 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         // 3. 重新添加主键约束
         dslContext.alterTable(tableName)
                 .add(DSL.constraint("pk_" + tableName).primaryKey(primaryKeyColumn)).execute();
+    }
+
+    /**
+     * @param actionName :[on_delete, on_update]
+     * @param action
+     * @return
+     */
+    private ConstraintForeignKeyOnStep getReferentialAction(ConstraintForeignKeyOnStep constraint,
+                                                            String actionName,
+                                                            String action) {
+        if (actionName.equals("on_delete")) {
+            return switch (action.toUpperCase()) {
+                case "CASCADE" -> constraint.onDeleteCascade();
+                case "SET NULL" -> constraint.onDeleteSetNull();
+                case "RESTRICT" -> constraint.onDeleteRestrict();
+                case "NO ACTION" -> constraint.onDeleteNoAction();
+                default -> throw new IllegalArgumentException("Unsupported referential action: " + action);
+            };
+        } else if (actionName.equals("on_update")) {
+            return switch (action.toUpperCase()) {
+                case "CASCADE" -> constraint.onUpdateCascade();
+                case "SET NULL" -> constraint.onUpdateSetNull();
+                case "RESTRICT" -> constraint.onUpdateRestrict();
+                case "NO ACTION" -> constraint.onUpdateNoAction();
+                default -> throw new IllegalArgumentException("Unsupported referential action: " + action);
+            };
+        }
+        return constraint;
     }
 }
