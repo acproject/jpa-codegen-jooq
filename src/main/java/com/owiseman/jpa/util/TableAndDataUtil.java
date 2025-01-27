@@ -7,8 +7,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.owiseman.jpa.model.DataRecord;
 import lombok.extern.log4j.Log4j;
 
-import org.jooq.*;
+import org.jooq.Condition;
+import org.jooq.ConstraintForeignKeyOnStep;
+import org.jooq.DSLContext;
+import org.jooq.DataType;
+import org.jooq.Field;
+import org.jooq.InsertValuesStepN;
 import org.jooq.Record;
+import org.jooq.Record;
+import org.jooq.Result;
+import org.jooq.SelectConditionStep;
+import org.jooq.SelectJoinStep;
+import org.jooq.SortField;
 import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
@@ -62,6 +72,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         switch (operation) {
             case "create_table" -> {
                 return getInstance().createTable(dslContext, rootNode);
+            }
+            case "create_batch_table" -> {
+                return getInstance().createBatchTable(dslContext, rootNode);
             }
             case "drop_table" -> {
                 return getInstance().dropTable(dslContext, rootNode);
@@ -117,11 +130,50 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         System.out.println("Send to MQ: " + json); // 输出到控制台，不记录到日志里
     }
 
+    @Override
+    public DataRecord createBatchTable(DSLContext dslContext, JsonNode rootNode) {
+        boolean useTransaction = rootNode.has("use_transaction") &&
+                rootNode.get("use_transaction").asBoolean();
+        AtomicReference<DataRecord> result_ = new AtomicReference<>();
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result_.set(createBatchTableLogic(configuration.dsl(), rootNode));
+            });
+        } else {
+            result_.set(createBatchTableLogic(dslContext, rootNode));
+        }
+        return result_.get();
+    }
+
+    private DataRecord createBatchTableLogic(DSLContext dslContext, JsonNode rootNode) {
+        JsonNode dataArray = rootNode.get("data");
+        List<DataRecord> result = new ArrayList<>();
+        for (JsonNode dataNode : dataArray) {
+            result.add(createTable(dslContext, dataNode));
+        }
+
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("[ ");
+        for (int i = 0; i < result.size(); i++) {
+            if (i == result.size() - 1) {
+                stringBuilder.append(result.get(i).name());
+            } else {
+                stringBuilder.append(result.get(i).name()).append(",");
+            }
+        }
+
+        String names = stringBuilder.append(" ]").toString();
+
+        return new DataRecord("create batch table", names, Optional.empty());
+
+    }
+
     public DataRecord createTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         JsonNode columns = rootNode.get("columns");
         JsonNode primaryKeysNode = rootNode.get("primary_keys");
         JsonNode uniqueKeysNode = rootNode.get("unique_keys");
+        JsonNode foreignKeysNode = rootNode.get("foreign_keys");
 
         var createTableStep = dslContext.createTableIfNotExists(tableName);
 
@@ -201,6 +253,38 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             }
         }
 
+        if (foreignKeysNode != null && foreignKeysNode.isArray()) {
+            for (JsonNode fkNode : foreignKeysNode) {
+                // 1. 解析外键配置
+                List<String> columnList = new ArrayList<>();
+                for (JsonNode colNode : fkNode.get("columns")) {
+                    columnList.add(colNode.asText());
+                }
+
+                String refTable = fkNode.get("referenced_table").asText();
+
+                List<String> refColumns = new ArrayList<>();
+                for (JsonNode refColNode : fkNode.get("referenced_columns")) {
+                    refColumns.add(refColNode.asText());
+                }
+
+                // 2. 生成约束名称（格式：fk_本表名_外键字段名）
+                String fkName = "fk_" + tableName + "_" + String.join("_", columnList);
+
+                // 3. 创建外键约束
+                createTableStep.constraint(
+                        DSL.constraint(fkName)
+                                .foreignKey(columnList.stream()
+                                        .map(col -> DSL.field(DSL.name(col)))
+                                        .toArray(Field[]::new))
+                                .references(DSL.table(refTable),
+                                        refColumns.stream()
+                                                .map(refCol -> DSL.field(DSL.name(refCol)))
+                                                .toArray(Field[]::new))
+                );
+            }
+        }
+
         createTableStep.execute();
         DataRecord dataRecord = new DataRecord("create table", tableName, null);
         log.info("Create table: " + tableName);
@@ -210,7 +294,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     private static DataType getSqlDataType(String typeName) {
         return switch (typeName) {
             case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
-            case "long", "java.lang.Long" -> SQLDataType.BIGINT;
+            case "long", "java.lang.Long", "BIGINT" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
             case "LocalDate", "LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
             case "LocalDateTime", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
@@ -555,7 +639,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      */
     @Override
     public DataRecord selectData(DSLContext dslContext, JsonNode rootNode) {
-       boolean useTransaction = rootNode.has("use_transaction") &&
+        boolean useTransaction = rootNode.has("use_transaction") &&
                 rootNode.get("use_transaction").asBoolean();
         AtomicReference<DataRecord> result_ = new AtomicReference<>();
         if (useTransaction) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.owiseman.jpa.model.DataRecord;
 import org.jooq.DSLContext;
 
+
 /**
  * @author acproject@qq.com
  * @date 2025-01-18 20:20
@@ -11,6 +12,8 @@ import org.jooq.DSLContext;
 public interface TabaleAndDataOperation {
     // 通过json创建表，逻辑比较简单，所以不加事务
     DataRecord createTable(DSLContext dslContext, JsonNode rootNode );
+    // 通过json批量创建表，因为批量创建表需要事务，所以加事务
+    DataRecord createBatchTable(DSLContext dslContext, JsonNode rootNode);
     // 通过json删除表，逻辑比较简单，所以不加事务
     DataRecord dropTable(DSLContext dslContext, JsonNode rootNode);
     // 通过json修改表

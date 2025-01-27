@@ -1,0 +1,42 @@
+[{
+    "operation": "create_table",
+    "table": "users",
+    "columns": [
+      {"name": "id", "type": "long", "primary_key": true, "auto_increment": true},
+      {"name": "username", "type": "VARCHAR", "length":150, "unique": true},
+      {"name": "password", "type": "VARCHAR", "length":255}
+    ]
+},
+
+
+{
+    "operation": "create_table",
+    "table": "roles",
+    "columns": [
+      {"name": "id", "type": "long", "primary_key": true},
+      {"name": "name", "type": "VARCHAR", "length": 255, "unique": true}
+    ]
+},
+  {
+    "operation": "create_table",
+    "table": "user_roles",
+    "columns": [
+      {"name": "user_id", "type": "long"},
+      {"name": "role_id", "type": "long"}
+    ],
+    "foreign_keys": [
+      {
+        "columns": ["user_id"],
+        "references": "users(id)",
+        "on_delete": "CASCADE"
+      },
+      {
+        "columns": ["role_id"],
+        "references": "roles(id)",
+        "on_delete": "CASCADE"
+      }
+    ]
+  }
+
+]
+
