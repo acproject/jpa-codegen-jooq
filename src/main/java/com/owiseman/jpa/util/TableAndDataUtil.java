@@ -271,16 +271,30 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 // 2. 生成约束名称（格式：fk_本表名_外键字段名）
                 String fkName = "fk_" + tableName + "_" + String.join("_", columnList);
 
+
+                var constraint = DSL.constraint(fkName)
+                        .foreignKey(columnList.stream()
+                                .map(col -> DSL.field(DSL.name(col)))
+                                .toArray(Field[]::new))
+                        .references(DSL.table(refTable),
+                                refColumns.stream()
+                                        .map(refCol -> DSL.field(DSL.name(refCol)))
+                                        .toArray(Field[]::new));
+
+                // 处理级联操作
+                if (fkNode.has("on_delete")) {
+
+                    constraint = getReferentialAction(constraint,
+                            fkNode.asText(), fkNode.get("on_delete").asText());
+                }
+
+                if (fkNode.has("on_update")) {
+                    constraint = getReferentialAction(constraint,
+                            fkNode.asText(), fkNode.get("on_update").asText());
+                }
                 // 3. 创建外键约束
                 createTableStep.constraint(
-                        DSL.constraint(fkName)
-                                .foreignKey(columnList.stream()
-                                        .map(col -> DSL.field(DSL.name(col)))
-                                        .toArray(Field[]::new))
-                                .references(DSL.table(refTable),
-                                        refColumns.stream()
-                                                .map(refCol -> DSL.field(DSL.name(refCol)))
-                                                .toArray(Field[]::new))
+                        constraint
                 );
             }
         }
@@ -1039,7 +1053,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         String relationType = rootNode.get("relation_type").asText();
         JsonNode foreignKeyNode = rootNode.get("foreign_key");
 
-        if (foreignKeyNode == null || foreignKeyNode.isArray()) {
+        if (foreignKeyNode == null || !foreignKeyNode.isArray()) {
             log.warn("No foreign keys defined for table: " + tableName);
             return new DataRecord("No foreign keys defined for table: ", tableName, Optional.empty());
         }
