@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 
 import com.owiseman.jpa.model.DataRecord;
+import com.owiseman.jpa.model.PaginationInfo;
 import lombok.extern.log4j.Log4j;
 
 import org.jooq.Condition;
@@ -163,7 +164,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         String names = stringBuilder.append(" ]").toString();
 
-        return new DataRecord("create batch table", names, Optional.empty());
+        return new DataRecord("create batch table", names, Optional.empty(), Optional.empty());
 
     }
 
@@ -299,7 +300,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         createTableStep.execute();
-        DataRecord dataRecord = new DataRecord("create table", tableName, null);
+        DataRecord dataRecord = new DataRecord("create table", tableName, null, null);
         log.info("Create table: " + tableName);
         return dataRecord;
     }
@@ -328,7 +329,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         String tableName = rootNode.get("table").asText();
         dslContext.dropDatabaseIfExists(tableName).execute();
         log.info("Drop table: " + tableName);
-        return new DataRecord("drop table", tableName, null);
+        return new DataRecord("drop table", tableName, null, null);
     }
 
     @Override
@@ -427,7 +428,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             }
         }
         log.info("Table altered: " + tableName);
-        return new DataRecord("alter table", tableName, null);
+        return new DataRecord("alter table", tableName, null, null);
     }
 
     @Override
@@ -466,7 +467,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         log.info("Insert data into table: " + tableName);
-        return new DataRecord("insert", tableName, null);
+        return new DataRecord("insert", tableName, null, null);
     }
 
     @Override
@@ -519,7 +520,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 log.info("Insert batch data into table: " + tableName);
             }
         }
-        return new DataRecord("insert batch", tableName, null);
+        return new DataRecord("insert batch", tableName, null, null);
     }
 
     @Override
@@ -559,7 +560,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .execute();
             log.info("Update data into table: " + tableName);
         }
-        return new DataRecord("update", tableName, null);
+        return new DataRecord("update", tableName, null, null);
     }
 
     @Override
@@ -601,7 +602,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             log.info("Update batch data into table: " + tableName);
         }
 
-        return new DataRecord("update batch", tableName, null);
+        return new DataRecord("update batch", tableName, null, null);
     }
 
     @Override
@@ -627,7 +628,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .execute();
         }
         log.info("Delete data from table: " + tableName);
-        return new DataRecord("delete", tableName, null);
+        return new DataRecord("delete", tableName, null, null);
     }
 
     /**
@@ -743,18 +744,25 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             selectStep.orderBy(sortField);
         }
 
+        int page = 0;
+        int pageSize = 0;
+        int offset = 0;
+        long totalItem = 0L;
+
         // process pagination
         if (paginationNode != null) {
-            int page = paginationNode.get("page").asInt();
-            int pageSize = paginationNode.get("pageSize").asInt();
-            int offset = (page - 1) * pageSize;
-
+            page = paginationNode.get("page").asInt();
+            pageSize = paginationNode.get("pageSize").asInt();
+            offset = (page - 1) * pageSize;
             selectStep.limit(pageSize).offset(offset);
         }
-
+        totalItem = DataAnalysisUtil.count(dslContext, tableName);
         Result<Record> result = selectStep.fetch();
+        var resultList = convertToMapList(result);
+        PaginationInfo paginationInfo = new PaginationInfo(page, pageSize,
+                totalItem, Math.toIntExact((totalItem + pageSize - 1) / pageSize));
         return new DataRecord("select", tableName,
-                Optional.of(convertToMapList(result)));
+                Optional.of(resultList), Optional.of(paginationInfo));
     }
 
     public List<Map<String, Object>> convertToMapList(Result<Record> result) {
@@ -942,17 +950,23 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             query.orderBy(orderByFields);
         }
         // add pagination
+        int page = 0;
+        int pageSize = 0;
+        int offset = 0;
+        long totalItem = 0L;
         if (paginationNode != null) {
-            int pageSize = paginationNode.get("pageSize").asInt();
-            int page = paginationNode.get("page").asInt();
-            int offset = (page - 1) * pageSize;
+            pageSize = paginationNode.get("pageSize").asInt();
+            page = paginationNode.get("page").asInt();
+            offset = (page - 1) * pageSize;
 
             query.limit(pageSize).offset(offset);
         }
-
+        totalItem = DataAnalysisUtil.count(dslContext, tableName);
+        PaginationInfo paginationInfo = new PaginationInfo(page, pageSize, totalItem,
+                Math.toIntExact((totalItem + pageSize - 1) / pageSize));
         Result<Record> result = query.fetch();
         return new DataRecord("select join", "tables",
-                Optional.of(convertToMapList(result)));
+                Optional.of(convertToMapList(result)), Optional.of(paginationInfo));
     }
 
     @Override
@@ -1025,14 +1039,14 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .on(tableName, columns.toArray(new String[0])).execute();
             log.info("Create unique index: " + indexName);
             return new DataRecord("create unique index", indexName,
-                    Optional.empty());
+                    Optional.empty(), Optional.empty());
         } else {
             // 创建索引
             dslContext.createIndex(indexName)
                     .on(tableName, columns.toArray(new String[0])).execute();
             log.info("Create index: " + indexName);
             return new DataRecord("create index", indexName,
-                    Optional.empty());
+                    Optional.empty(), Optional.empty());
         }
 
         // 设置索引类型 ：目前jooq还不支持设置类型，后面主要功能后，再来实现
@@ -1056,7 +1070,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         dslContext.dropIndexIfExists(indexName).on(tableName).execute();
         log.info("Drop index: " + indexName);
         return new DataRecord("drop index", indexName,
-                Optional.empty());
+                Optional.empty(), Optional.empty());
     }
 
     private DataRecord addForeignKeyLogic(DSLContext dslContext, JsonNode rootNode) {
@@ -1066,7 +1080,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         if (foreignKeyNode == null || !foreignKeyNode.isArray()) {
             log.warn("No foreign keys defined for table: " + tableName);
-            return new DataRecord("No foreign keys defined for table: ", tableName, Optional.empty());
+            return new DataRecord("No foreign keys defined for table: ", tableName, Optional.empty(), Optional.empty());
         }
         if ("N-N".equals(relationType)) {
             return createIntermediateTable(dslContext, tableName, foreignKeyNode);
@@ -1098,7 +1112,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .add(constraint).execute();
             log.info("Added foreign key constraint: " + foreignKeyName + " to table: " + tableName);
         }
-        return new DataRecord("add foreign key", tableName, Optional.empty());
+        return new DataRecord("add foreign key", tableName, Optional.empty(), Optional.empty());
     }
 
     private DataRecord createIntermediateTable(DSLContext dslContext, String tableName, JsonNode foreignKeysNode) {
@@ -1126,7 +1140,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .execute();
             log.info("Created intermediate table: " + intermediateTableName);
         }
-        return new DataRecord("create intermediate table", intermediateTableName, Optional.empty());
+        return new DataRecord("create intermediate table", intermediateTableName, Optional.empty(),Optional.empty());
     }
 
     private Condition operatorCondition(String operator, Condition condition,

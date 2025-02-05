@@ -4,7 +4,7 @@
   "table": "orders",
 
   "pagination": {
-    "page": 2,
+    "page": 1,
     "pageSize": 10
   }
 

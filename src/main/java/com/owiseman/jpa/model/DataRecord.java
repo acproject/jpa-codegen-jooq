@@ -7,6 +7,7 @@ import java.util.Optional;
 public record DataRecord(
         String pattern,
         String name,
-        Optional<List<Map<String, Object>>> load
+        Optional<List<Map<String, Object>>> load,
+        Optional<PaginationInfo> pagination
 ) {
 }
