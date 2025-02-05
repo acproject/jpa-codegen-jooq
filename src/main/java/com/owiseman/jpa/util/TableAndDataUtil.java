@@ -689,7 +689,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode orderByNode = rootNode.get("orderBy");
         JsonNode paginationNode = rootNode.get("pagination");
 
-        Condition condition = DSL.noCondition();
+        AtomicReference<Condition> condition = new AtomicReference<>(DSL.noCondition());
         // 构建WHERE条件子句
         if (whereNode != null) {
             whereNode.fields().forEachRemaining(entry -> {
@@ -698,14 +698,14 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 if (conditionNode.isArray()) {
                     List<String> values = new ArrayList<>();
                     conditionNode.forEach(value -> values.add(value.asText()));
-                    condition.and(DSL.field(fieldName).in(values));
+                  condition.set(condition.get().and(DSL.field(fieldName).in(values)));
                 } else if (conditionNode.isObject()) {
                     String operator = conditionNode.get("operator").asText();
                     JsonNode valueNode = conditionNode.get("value");
-                    operatorCondition(operator, condition, valueNode, fieldName);
+                    condition.set(operatorCondition(operator, condition.get(), valueNode, fieldName));
                 } else {
                     // default use eq condition
-                    condition.and(DSL.field(fieldName).eq(conditionNode.asText()));
+                    condition.set(condition.get().and(DSL.field(fieldName).eq(conditionNode.asText())));
                 }
             });
         }
@@ -724,7 +724,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         // 执行查询
         SelectConditionStep<Record> selectStep = dslContext.select()
                 .from(DSL.table(tableName))
-                .where(condition);
+                .where(condition.get());
 
         if (!groupByFields.isEmpty()) {
             selectStep.groupBy(groupByFields);
@@ -840,7 +840,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode orderByArray = rootNode.get("orderByArr");
         JsonNode paginationNode = rootNode.get("pagination");
 
-        Condition condition = DSL.noCondition();
+         AtomicReference<Condition> condition = new AtomicReference<>(DSL.noCondition());
 
         // Process WHERE conditions
         if (whereArray != null) {
@@ -853,14 +853,14 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     List<String> values = new ArrayList<>();
                     entry.getValue().forEach(value -> {
                         values.add(value.asText());
-                        condition.and(DSL.field(entry.getKey()).in(values));
+                       condition.set(condition.get().and(DSL.field(entry.getKey()).in(values)));
                     });
                 } else if (conditionNode.isObject()) {
-                    operatorCondition(conditionNode.get("operator").asText(),
-                            condition, conditionNode, fieldName);
+                   condition.set(operatorCondition(conditionNode.get("operator").asText(),
+                            condition.get(), conditionNode, fieldName));
                 } else {
                     // Process `=` condition
-                    condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText()));
+                    condition.set(condition.get().and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
                 }
             });
         }
@@ -925,7 +925,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         // Build the final query
-        query.where(condition);
+        query.where(condition.get());
 
         // Add GROUP BY
         if (!groupByFields.isEmpty()) {
@@ -1140,99 +1140,99 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     .execute();
             log.info("Created intermediate table: " + intermediateTableName);
         }
-        return new DataRecord("create intermediate table", intermediateTableName, Optional.empty(),Optional.empty());
+        return new DataRecord("create intermediate table", intermediateTableName, Optional.empty(), Optional.empty());
     }
 
     private Condition operatorCondition(String operator, Condition condition,
                                         JsonNode valueNode, String fieldName) {
         switch (operator) {
             case "eq" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).eq(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).eq(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).eq(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).eq(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).eq(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).eq(valueNode.asText());
                 }
                 return condition;
             }
             case "neq" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).ne(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).ne(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).ne(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).ne(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).ne(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).ne(valueNode.asText());
                 }
                 return condition;
             }
             case "gt" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).gt(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).gt(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).gt(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).gt(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).gt(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).gt(valueNode.asText());
                 }
                 return condition;
             }
             case "lt" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).lt(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).lt(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).lt(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).lt(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).lt(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).lt(valueNode.asText());
                 }
                 return condition;
             }
             case "gte" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).ge(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).ge(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).ge(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).ge(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).ge(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).ge(valueNode.asText());
                 }
                 return condition;
             }
             case "lte" -> {
-                if (isNumber(valueNode.get("value").asText())) {
-                    if (isInteger(valueNode.get("value").asText())) {
-                        condition = DSL.condition(DSL.field(fieldName).le(valueNode.get("value").asInt()));
-                    } else if (isFloat(valueNode.get("value").asText())) {
-                        condition = DSL.field(fieldName).le(valueNode.get("value").asDouble());
-                    } else {
-                        condition = DSL.field(fieldName).le(valueNode.get("value").asText());
+                if (isNumber(valueNode.asText())) {
+                    if (isInteger(valueNode.asText())) {
+                        condition = DSL.condition(DSL.field(fieldName).le(valueNode.asInt()));
+                    } else if (isFloat(valueNode.asText())) {
+                        condition = DSL.field(fieldName).le(valueNode.asDouble());
                     }
+                } else {
+                    condition = DSL.field(fieldName).le(valueNode.asText());
                 }
                 return condition;
             }
             case "between" -> {
-                if (valueNode.get("value").isArray() && valueNode.get("value").size() == 2) {
-                    if (isNumber(valueNode.get("value").get(0).asText()) && isNumber(valueNode.get("value").get(1).asText())) {
-                        if (isInteger(valueNode.get("value").get(0).asText()) && isInteger(valueNode.get("value").get(1).asText())) {
-                            int lowerBound = valueNode.get("value").get(0).asInt();
-                            int upperBound = valueNode.get("value").get(1).asInt();
+                if (valueNode.isArray() && valueNode.size() == 2) {
+                    if (isNumber(valueNode.get(0).asText()) && isNumber(valueNode.get(1).asText())) {
+                        if (isInteger(valueNode.get(0).asText()) && isInteger(valueNode.get(1).asText())) {
+                            int lowerBound = valueNode.get(0).asInt();
+                            int upperBound = valueNode.get(1).asInt();
                             condition = DSL.field(fieldName).between(lowerBound, upperBound);
                         }
-                    } else if (isFloat(valueNode.get("value").get(0).asText()) && isFloat(valueNode.get("value").get(1).asText())) {
-                        double lowerBound = valueNode.get("value").get(0).asDouble();
-                        double upperBound = valueNode.get("value").get(1).asDouble();
+                    } else if (isFloat(valueNode.get(0).asText()) && isFloat(valueNode.get(1).asText())) {
+                        double lowerBound = valueNode.get(0).asDouble();
+                        double upperBound = valueNode.get(1).asDouble();
                         condition = DSL.field(fieldName).between(lowerBound, upperBound);
                     } else {
-                        String lowerBound = valueNode.get("value").get(0).asText();
-                        String upperBound = valueNode.get("value").get(1).asText();
+                        String lowerBound = valueNode.get(0).asText();
+                        String upperBound = valueNode.get(1).asText();
                         condition = DSL.field(fieldName).between(lowerBound, upperBound);
                     }
 
