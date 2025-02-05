@@ -14,7 +14,6 @@ import org.jooq.DataType;
 import org.jooq.Field;
 import org.jooq.InsertValuesStepN;
 import org.jooq.Record;
-import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SelectConditionStep;
 import org.jooq.SelectJoinStep;
@@ -755,7 +754,19 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         Result<Record> result = selectStep.fetch();
         return new DataRecord("select", tableName,
-                Optional.of(result.stream().toList()));
+                Optional.of(convertToMapList(result)));
+    }
+
+    public List<Map<String, Object>> convertToMapList(Result<Record> result) {
+        List<Map<String, Object>> mapList = new ArrayList<>();
+        for (Record record : result) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            for (Field<?> field : record.fields()) {
+                map.put(field.getName(), record.getValue(field));
+            }
+            mapList.add(map);
+        }
+        return mapList;
     }
 
     /**
@@ -941,7 +952,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
         Result<Record> result = query.fetch();
         return new DataRecord("select join", "tables",
-                Optional.of(result.stream().toList()));
+                Optional.of(convertToMapList(result)));
     }
 
     @Override

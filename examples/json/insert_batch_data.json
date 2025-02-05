@@ -1,0 +1,19 @@
+{
+  "operation": "insert_batch",
+  "table": "test_users",
+  "use_transaction": true,
+  "data": [
+    {
+      "id": 7,
+      "username": "john_doe7",
+      "email": "john.doe7@example.com",
+      "age": 30
+    },
+    {
+      "id": 8,
+      "username": "jane_smith8",
+      "email": "jane.smith8@example.com",
+      "age": 25
+    }
+  ]
+}

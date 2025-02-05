@@ -1,0 +1,11 @@
+{
+"operation": "select",
+  "use_transaction": true,
+  "table": "orders",
+
+  "pagination": {
+    "page": 2,
+    "pageSize": 10
+  }
+
+}

@@ -1,6 +1,6 @@
 {
   "operation": "create_batch_table",
-"use_transaction": true,
+  "use_transaction": true,
   "data": [
     {
       "operation": "create_table",
