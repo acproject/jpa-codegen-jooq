@@ -1218,6 +1218,10 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 }
                 return condition;
             }
+            case "like" -> {
+                condition = DSL.field(fieldName).like(valueNode.asText());
+                return condition;
+            }
             case "between" -> {
                 if (valueNode.isArray() && valueNode.size() == 2) {
                     if (isNumber(valueNode.get(0).asText()) && isNumber(valueNode.get(1).asText())) {

@@ -1,8 +1,45 @@
+/// no condition
+
 {
 "operation": "select",
   "use_transaction": true,
   "table": "orders",
 
+  "pagination": {
+    "page": 1,
+    "pageSize": 10
+  }
+
+}
+
+/// like condition
+{
+"operation": "select",
+  "table": "users",
+  "use_transaction": true,
+  "where":{
+      "username": {
+          "operator": "like",
+          "value": "%7"
+      }
+  },
+  "pagination": {
+    "page": 1,
+    "pageSize": 10
+  }
+
+}
+
+/// eq condition
+{
+"operation": "select",
+  "table": "users",
+  "where":{
+      "username": {
+          "operator": "eq",
+          "value": "john_deo7"
+      }
+  },
   "pagination": {
     "page": 1,
     "pageSize": 10
