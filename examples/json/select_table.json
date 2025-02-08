@@ -46,3 +46,20 @@
   }
 
 }
+
+/// gt condition
+{
+"operation": "select",
+  "table": "users",
+  "where":{
+      "id": {
+          "operator": "gt",
+          "value": "7"
+      }
+  },
+  "pagination": {
+    "page": 1,
+    "pageSize": 10
+  }
+
+}
