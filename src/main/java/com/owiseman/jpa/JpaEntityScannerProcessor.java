@@ -149,8 +149,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         for (var field : fields) {
             String fieldName = field.getSimpleName().toString();
             Column columnAnnotation = field.getAnnotation(Column.class);
-            String columnName = columnAnnotation != null ? columnAnnotation.name()
-                    : fieldName;
+              String columnName = (columnAnnotation != null && !columnAnnotation.name().isEmpty())
+                ? columnAnnotation.name()
+                : convertClassNameToTableName(fieldName);
             TypeMirror typeMirror = field.asType();
             String typeName = typeUtils.erasure(typeMirror).toString();
 
