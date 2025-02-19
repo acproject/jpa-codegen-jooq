@@ -43,9 +43,10 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
     private Elements elementUtils;
     private Types typeUtils;
 
-    public JpaEntityScannerProcessor(){
+    public JpaEntityScannerProcessor() {
 
     }
+
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
@@ -61,10 +62,10 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         typeElements.add(Entity.class);
 
         List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWithAny(typeElements)
-                    .stream()
-                    .filter(element -> element instanceof TypeElement)
-                    .map(element -> (TypeElement) element)
-                    .collect(Collectors.toList());
+                .stream()
+                .filter(element -> element instanceof TypeElement)
+                .map(element -> (TypeElement) element)
+                .collect(Collectors.toList());
 
         if (!entityClasses.isEmpty()) {
             try {
@@ -106,16 +107,16 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
         String writeFile = injectImports(javaFile, List.of("org.jooq.impl.DSL", "org.jooq.impl.SQLDataType"));
 
-        try  {
+        try {
             String fileName = javaFile.packageName.isEmpty() ? javaFile.typeSpec.name : javaFile.packageName + "." + javaFile.typeSpec.name;
             List<Element> originatingElements = javaFile.typeSpec.originatingElements;
-            JavaFileObject filerSourceFile =  processingEnv.getFiler().createSourceFile(fileName, (Element[])originatingElements.toArray(new Element[originatingElements.size()]));
+            JavaFileObject filerSourceFile = processingEnv.getFiler().createSourceFile(fileName, (Element[]) originatingElements.toArray(new Element[originatingElements.size()]));
             Writer writer = filerSourceFile.openWriter();
             writer.write(writeFile);
             writer.close();
 
             System.out.println("Generated file: " + fileName);
-        } catch( java.io.IOException e) {
+        } catch (java.io.IOException e) {
             e.printStackTrace();
         }
 
@@ -149,9 +150,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         for (var field : fields) {
             String fieldName = field.getSimpleName().toString();
             Column columnAnnotation = field.getAnnotation(Column.class);
-              String columnName = (columnAnnotation != null && !columnAnnotation.name().isEmpty())
-                ? columnAnnotation.name()
-                : convertClassNameToTableName(fieldName);
+            String columnName = (columnAnnotation != null && !columnAnnotation.name().isEmpty())
+                    ? columnAnnotation.name()
+                    : convertClassNameToTableName(fieldName);
             TypeMirror typeMirror = field.asType();
             String typeName = typeUtils.erasure(typeMirror).toString();
 
@@ -168,7 +169,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
                             fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
 
-                    .initializer("DSL.field(String.valueOf(TABLE), \"" + columnName + "\", " + dataTypeWithLength +
+                    .initializer("DSL.field("+"\"" + columnName + "\","  + "\"" + columnName + "\"," + dataTypeWithLength +
                             ".nullable(" + isNullable(field) + "))")
                     .build();
             fieldSpecs.add(fieldSpec);
