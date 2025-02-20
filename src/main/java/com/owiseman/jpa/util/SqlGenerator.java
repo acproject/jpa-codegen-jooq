@@ -72,9 +72,9 @@ public class SqlGenerator implements MapToType {
                     case "int", "java.lang.Integer" -> "INTEGER";
                     case "long", "java.lang.Long" -> "BIGINT";
                     case "java.lang.String" -> "VARCHAR(255)";
-                    case "java.time.LocalDate" -> "LOCALDATE";
-                    case "java.time.LocalDateTime" -> "LOCALDATETIME";
-                    case "java.time.LocalTime" -> "LOCALTIME";
+                    case "java.time.LocalDate" -> "DATE";
+                    case "java.time.LocalDateTime" -> "TIME";
+                    case "java.time.LocalTime" -> "TIME";
                     case "java.time.OffsetDateTime", "java.util.Date" -> "DATE";
                     case "org.jooq.JSONB" -> "JSONB";
                     case "java.lang.Boolean" -> "BOOLEAN";
