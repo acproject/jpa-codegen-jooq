@@ -80,15 +80,85 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
       src/main/java/com/example/entity/Students.java
 ```
 
-### Learn how to use it in examples
-* [./examples](./examples)
-
-### reference
-https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
-
 ### Notes
 * Single Data Source: Both JPA and JOOQ should use the same DataSource.
 * Avoid Redundant Work:Since both JPA and JOOQ are means of accessing the database, they might lead to redundant work in certain scenarios. For example, if you manage database schema changes using JPA migration tools (such as Flyway or Liquibase), you must ensure these changes are also reflected in the JOOQ code generation process.
 * Shared DataSource: Use a shared DataSource to ensure that both frameworks connect to the same database instance.
 
+## Use the built-in JOOQ utility
+### Learn how to use it in examples
+* [./examples](./examples)
+
+## New features
+* 添加了对Jooq对象的操作工具类，基础用法很简单
+### example1 ： Use in Spring
+```java
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.jooq.DSLContext;
+
+@Service
+public class MyService {
+
+    @Autowired
+    private DSLContext dslContext;
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    public void processRequest(String json) throws Exception {
+        TableAndDataUtil.processRequest(dslContext, rabbitTemplate, json);
+    }
+}
+```
+
+### example2 ： Use in non-Spring
+```java
+import org.jooq.impl.DSL;
+import org.jooq.DSLContext;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import java.sql.Connection;
+import java.sql.DriverManager;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        // create DSLContext
+        Connection connection = DriverManager.getConnection("jdbc:postgresql://localhost:5432/main_db", "user", "password");
+        DSLContext dslContext = DSL.using(connection);
+
+        // create RabbitTemplate
+        RabbitTemplate rabbitTemplate = new RabbitTemplate();
+        rabbitTemplate.setConnectionFactory(new ConnectionFactory());
+
+        // process request
+        String json = "{ \"operation\": \"insert\", \"table\": \"users\", \"data\": { \"id\": 1, \"name\": \"John Doe\", \"email\": \"john.doe@example.com\" } }";
+        TableAndDataUtil.processRequest(dslContext, rabbitTemplate, json);
+    }
+}
+```
+
+### Added SQL script generation
+Spawn Path:
+```txt
+   target/classes/schema/schemas.sql (Maven)
+   build/resources/main/schema/schemas.sql (Gradle)
+```
+Here, take the maven project as an example: insert the following code in the build node:
+```pom.xml
+<build>
+    <resources>
+        <resource>
+            <directory>${project.build.outputDirectory}/schema</directory>
+            <targetPath>schema</targetPath>
+        </resource>
+    </resources>
+</build>
+```
+### The functionality that will be implemented
+* [ ] Built-in message queuing functionality
+* [ ] Lightweight built-in caching capabilities
+
+### reference
+https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
 [中文](readme_zh.md)

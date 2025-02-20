@@ -2,6 +2,7 @@
 
 ### 主要功能
 这是一个Maven或Gradle插件，旨在从JPA实体生成JOOQ代码，从而避免JOOQ扫描数据库模式的需求。这种方法结合了两种技术的优势：JPA简化了ORM（对象关系映射）和数据迁移，而JOOQ则提供了一个强大的SQL构建器和查询执行框架。
+当然，你也可以当做是JOOQ的一个辅助工具类，它可以通过自带的工具类，实现复杂的查询，基本的增删改查都可以完成。
 
 ### 本地编译与安装
 你需要JDK 21或者以上版本，并且安装了Gradle用于执行build.gradle脚本
@@ -79,6 +80,8 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
       src/main/java/com/example/entity/Students.java
 ```
 
+## 使用自带的JOOQ工具类
+
 ### 通过examples中的例子了解使用方法
 [./examples](./examples)
 
@@ -87,13 +90,9 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
 * 避免重复工作：由于JPA和JOOQ都是访问数据库的手段，在某些场景下可能会导致重复工作。例如，如果您使用JPA迁移工具（如Flyway或Liquibase）管理数据库模式变更，则必须确保这些变更也同步到JOOQ的代码生成过程中。
 * 共享数据源：使用共享的数据源，以确保两个框架连接到同一个数据库实例。
 
-
-### 参考
-https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
-
-### 新增特性
+## 新增特性
 * 添加了对Jooq对象的操作工具类，基础用法很简单
-#### 示例1 ： 在Spring中使用
+### 示例1 ： 在Spring中使用
 ```java
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -115,7 +114,7 @@ public class MyService {
 }
 ```
 
-#### 示例2 ： 在非Spring中使用
+### 示例2 ： 在非Spring中使用
 ```java
 import org.jooq.impl.DSL;
 import org.jooq.DSLContext;
@@ -139,5 +138,30 @@ public class Main {
     }
 }
 ```
+
+### 新增SQL脚本生成
+生成路径：
+```txt
+   target/classes/schema/schemas.sql (Maven)
+   build/resources/main/schema/schemas.sql (Gradle)
+```
+这里以maven项目为例：在build节点插入下面的代码：
+```pom.xml
+<build>
+    <resources>
+        <resource>
+            <directory>${project.build.outputDirectory}/schema</directory>
+            <targetPath>schema</targetPath>
+        </resource>
+    </resources>
+</build>
+```
+
+### 将要实现的功能
+* [ ] 内置消息队列功能
+* [ ] 轻量级内置缓存功能 
+
+### 参考
+https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
 
 [English](readme.md)
