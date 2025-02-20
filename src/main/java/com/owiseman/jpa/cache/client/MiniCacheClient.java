@@ -1,0 +1,79 @@
+package com.owiseman.jpa.cache.client;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+
+public class MiniCacheClient {
+    private Socket socket;
+    private BufferedReader reader;
+    private PrintWriter writer;
+
+    public void connection(String host, int port) throws IOException {
+        socket = new Socket(host, port);
+        reader = new BufferedReader(
+                new InputStreamReader(socket.getInputStream()));
+        writer = new PrintWriter(socket.getOutputStream(), true);
+    }
+
+    public String set(String key, String value) throws IOException {
+        String command = encodeCommand("SET", key, value);
+        writer.println(command);
+        return readResponse();
+    }
+
+    public String get(String key) throws IOException {
+        String command = encodeCommand("GET", key);
+        writer.println(command);
+        return readResponse();
+    }
+
+    private String encodeCommand(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("*").append(parts.length).append("\r\n");
+        for (String part : parts) {
+            sb.append("$").append(part.length()).append("\r\n");
+            sb.append(part).append("\r\n");
+        }
+        return sb.toString();
+    }
+
+    private String readResponse() throws IOException {
+        char type = (char) reader.read();
+        switch (type) {
+            case '+' -> reader.readLine();
+            case '$' -> {
+                int length = Integer.parseInt(reader.readLine());
+                if (length == -1) {
+                    return null;
+                }
+                char[] data = new char[length];
+                reader.read(data, 0, length);
+                reader.readLine(); // 消耗CRLF
+                return new String(data);
+            }
+            // 其他类型的响应 todo
+        }
+        return null;
+    }
+
+    public void close() throws IOException {
+        socket.close();
+        reader.close();
+        writer.close();
+    }
+}
+
+
+class Example {
+    public static void main(String[] args) throws IOException {
+        MiniCacheClient client = new MiniCacheClient();
+        client.connection("127.0.0.1", 6379);
+        System.out.println(client.set("test", "Hello World"));
+        String value = client.get("key");
+        System.out.println(value);
+        client.close();
+    }
+}

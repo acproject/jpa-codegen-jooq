@@ -15,9 +15,9 @@ set(SOURCES
 include_directories(src/main/cpp/server)
 
 # 可执行文件
-add_executable(mini_redis_server ${SOURCES})
+add_executable(mini_cache_server ${SOURCES})
 
 # 如果是 MacOS，需要特别处理
 if(APPLE)
-    target_compile_definitions(mini_redis_server PRIVATE PLATFORM_MACOS)
+    target_compile_definitions(mini_cache_server PRIVATE PLATFORM_MACOS)
 endif()
