@@ -16,7 +16,7 @@ public class SqlGenerator implements MapToType {
 
     private String buildCreateTableStatement(TableMeta table, DataSourceEnum dataSourceEnum) {
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATE TABLE ").append(table.name()).append(" (\n");
+        sb.append("CREATE TABLE IF NOT EXISTS ").append(table.name()).append(" (\n");
 
         // 处理字段定义
         table.columns().forEach(col -> {
@@ -73,7 +73,7 @@ public class SqlGenerator implements MapToType {
                     case "long", "java.lang.Long" -> "BIGINT";
                     case "java.lang.String" -> "VARCHAR(255)";
                     case "java.time.LocalDate" -> "DATE";
-                    case "java.time.LocalDateTime" -> "TIME";
+                    case "java.time.LocalDateTime" -> "TIMESTAMP";
                     case "java.time.LocalTime" -> "TIME";
                     case "java.time.OffsetDateTime", "java.util.Date" -> "DATE";
                     case "org.jooq.JSONB" -> "JSONB";
