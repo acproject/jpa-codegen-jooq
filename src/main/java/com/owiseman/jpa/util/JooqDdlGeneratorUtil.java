@@ -2,14 +2,13 @@ package com.owiseman.jpa.util;
 import org.jooq.DataType;
 import org.jooq.Field;
 import org.jooq.Table;
-import org.jooq.impl.DSL;
 import org.jooq.impl.SQLDataType;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 
-public class JooqDdlGenerator {
+public class JooqDdlGeneratorUtil {
 
     public static List<String> generateTables(Class<?> tablesClass) {
         List<String> ddls = new ArrayList<>();
