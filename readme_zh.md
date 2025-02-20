@@ -91,7 +91,8 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
 * 共享数据源：使用共享的数据源，以确保两个框架连接到同一个数据库实例。
 
 ## 新增特性
-* 添加了对Jooq对象的操作工具类，基础用法很简单
+添加了对Jooq对象的操作工具类，基础用法很简单
+
 ### 示例1 ： 在Spring中使用
 ```java
 import org.springframework.amqp.rabbit.core.RabbitTemplate;

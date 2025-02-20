@@ -90,7 +90,8 @@ javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
 * [./examples](./examples)
 
 ## New features
-* 添加了对Jooq对象的操作工具类，基础用法很简单
+Added an operation tool class for Jooq objects, the basic usage is very simple
+
 ### example1 ： Use in Spring
 ```java
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
