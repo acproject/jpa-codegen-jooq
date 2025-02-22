@@ -1,6 +1,7 @@
 // src/server/CommandHandler.hpp
 #pragma once
 #include "DataStore.hpp"
+#include <algorithm>
 #include <functional>
 #include <unordered_map>
 #include <vector>

@@ -1,6 +1,19 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+#else
+    #include <sys/socket.h>
+#endif
+#ifdef _WIN32
+    #include <WinSock2.h>
+#else
+    #include <netinet/in.h>
+#endif
+#ifdef _WIN32
+    #include <io.h>
+#else
+    #include <unistd.h>
+#endif
 #include <fcntl.h>
 
 #if defined(__linux__)
@@ -8,7 +21,12 @@
 #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
     #include <sys/event.h>
 #else
-    #error "Unsupported platform"
+    #ifdef _WIN32
+        #include <windows.h>
+        // Windows平台使用IOCP实现
+    #else
+        #error "当前平台不支持 - 需要Linux/BSD(支持epoll/kqueue)或Windows(支持IOCP)系统"
+    #endif
 #endif
 
 #pragma once
