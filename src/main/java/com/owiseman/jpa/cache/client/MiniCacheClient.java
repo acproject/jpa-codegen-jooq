@@ -64,25 +64,26 @@ public class MiniCacheClient {
         reader.close();
         writer.close();
     }
-}
 
+    private static class Example {
+        public static void main(String[] args) throws IOException {
+            MiniCacheClient client = new MiniCacheClient();
+            client.connection("127.0.0.1", 6379);
 
-class Example {
-    public static void main(String[] args) throws IOException {
-        MiniCacheClient client = new MiniCacheClient();
-        client.connection("127.0.0.1", 6379);
-        
-        // 设置键值对
-        System.out.println(client.set("test", "Hello World"));
-        
-        // 获取刚才设置的键
-        String value = client.get("test");  // 修改这里，使用正确的键名
-        System.out.println("Value for test: " + value);
-        
-        // 测试不存在的键
-        String nonExistValue = client.get("nonexistent");
-        System.out.println("Value for nonexistent: " + nonExistValue);
-        
-        client.close();
+            // 设置键值对
+            client.set("test", "Hello World");
+
+            // 获取刚才设置的键
+            String value = client.get("test");  // 修改这里，使用正确的键名
+            System.out.println("Value for test: " + value);
+
+            // 测试不存在的键
+            String nonExistValue = client.get("nonexistent");
+            System.out.println("Value for nonexistent: " + nonExistValue);
+
+            client.close();
+        }
     }
 }
+
+
