@@ -2,6 +2,7 @@ package com.owiseman.jpa.util;
 
 import org.jooq.Condition;
 import org.jooq.DSLContext;
+import org.jooq.SortField;
 import org.jooq.impl.DSL;
 
 import java.util.List;
@@ -44,6 +45,21 @@ public class PaginationHelper {
                 .limit(pageSize)
                 .offset((pageNumber - 1) * pageSize)
                 .fetchInto(recordClass);
+    }
+
+     public static <T> List<T> getPaginatedData(DSLContext dsl,
+                                              Condition condition,
+                                              String tableName,
+                                              int pageSize,
+                                              int pageNumber,
+                                              Class<T> entityClass,
+                                              SortField<?>... sortFields) { // 新增排序参数
+        return dsl.selectFrom(DSL.table(tableName))
+            .where(condition)
+            .orderBy(sortFields) // 应用排序
+            .limit(pageSize)
+            .offset((pageNumber - 1) * pageSize)
+            .fetchInto(entityClass);
     }
 
 
