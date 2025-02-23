@@ -1,4 +1,4 @@
-package com.owiseman.jpa.cache.client;
+package com.owiseman.cache.client;
 
 import java.io.BufferedReader;
 import java.io.IOException;

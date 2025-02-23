@@ -157,6 +157,35 @@ public class Main {
     </resources>
 </build>
 ```
+## 新增内置缓存服务
+目前该服务还不支持windows，linux和mac os已经可以使用
+```shell
+mini_cache_server --port 6379
+```
+### Java客户端使用示例
+```java
+import com.owiseman.jpa.cache.client;
+
+ private class Example {
+        public static void main(String[] args) throws IOException {
+            MiniCacheClient client = new MiniCacheClient();
+            client.connection("127.0.0.1", 6379);
+
+            // 设置键值对
+            client.set("test", "Hello World");
+
+            // 获取刚才设置的键
+            String value = client.get("test");  // 修改这里，使用正确的键名
+            System.out.println("Value for test: " + value);
+
+            // 测试不存在的键
+            String nonExistValue = client.get("nonexistent");
+            System.out.println("Value for nonexistent: " + nonExistValue);
+
+            client.close();
+        }
+    }
+```
 
 ### 将要实现的功能
 * [ ] 内置消息队列功能
