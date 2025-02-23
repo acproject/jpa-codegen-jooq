@@ -1,2 +1,8 @@
-rootProject.name = 'jpa-codegen-jooq'
 
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+rootProject.name = 'jpa-codegen-jooq'

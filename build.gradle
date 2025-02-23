@@ -36,6 +36,10 @@ dependencies {
 //    implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'org.springframework.amqp:spring-rabbit:3.2.1'
 }
+ext {
+    cppConfig = project.hasProperty('cppConfig') ? project.cppConfig : 'Release'
+    cmakeTool = '' // cmake路径初始化
+}
 
 tasks.withType(Zip) {
     zip64 = true
@@ -62,4 +66,85 @@ gradlePlugin {
             implementationClass = 'com.owiseman.jpa.JpaEntityScannerProcessor'
         }
     }
+}
+// 获取 cmake 路径的任务
+task getCmakePath(type: Exec) {
+    commandLine 'which', 'cmake'
+    standardOutput = new ByteArrayOutputStream()
+    doLast {
+        ext.cmakePath = standardOutput.toString().trim()
+        if (cmakePath.isEmpty()) {
+            throw new GradleException("CMake not found. Please install CMake and ensure it is in your PATH.")
+        }
+        project.ext.cmakeTool = cmakePath
+        println "CMake found at: ${project.ext.cmakeTool}"
+    }
+}
+
+// C++ 构建任务
+task buildCpp(type: Exec, dependsOn: getCmakePath) {
+    workingDir project.rootDir
+    
+    // 设置默认的错误处理
+    ignoreExitValue = true
+    
+    doFirst {
+        // 检查 CMakeLists.txt 是否存在
+        def cmakeListsFile = new File(project.rootDir, "CMakeLists.txt")
+        if (!cmakeListsFile.exists()) {
+            throw new GradleException("CMakeLists.txt 文件不存在: ${cmakeListsFile}")
+        }
+
+        // 创建构建目录
+        project.mkdir("${project.rootDir}/build/cpp")
+        
+        // 设置任务属性
+        ignoreExitValue = true
+        errorOutput = new ByteArrayOutputStream()
+        standardOutput = new ByteArrayOutputStream()
+        
+        // 设置命令行，使用项目根目录作为源目录
+        commandLine project.ext.cmakeTool,
+                '-S', "${project.rootDir}",
+                '-B', "${project.rootDir}/build/cpp",
+                "-DCMAKE_BUILD_TYPE=${cppConfig}",
+                '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON'
+    }
+
+    // 修改错误处理逻辑
+    ext.execResult = -1
+
+    doLast {
+        // 获取执行结果
+        ext.execResult = executionResult.get().exitValue
+
+        // 输出 CMake 配置阶段的日志
+        println "CMake 配置输出:"
+        println standardOutput.toString()
+        if (errorOutput.toString()) {
+            println "CMake 错误输出:"
+            println errorOutput.toString()
+        }
+
+        // 如果配置成功，执行构建
+        if (ext.execResult == 0) {
+            exec {
+                workingDir "${project.rootDir}/build/cpp"
+                commandLine project.ext.cmakeTool,
+                        '--build', '.',
+                        '--config', "${cppConfig}",
+                        '--parallel', '4'
+                standardOutput = System.out
+                errorOutput = System.err
+            }
+        } else {
+            throw new GradleException("CMake 配置失败，请查看上面的错误信息")
+        }
+    }
+}
+
+// cpp 任务别名
+task cpp(dependsOn: buildCpp) {
+    group = 'build'
+    description = 'Builds the C++ code using CMake'
 }
