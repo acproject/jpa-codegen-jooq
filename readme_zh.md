@@ -175,7 +175,7 @@ import com.owiseman.jpa.cache.client;
             client.set("test", "Hello World");
 
             // 获取刚才设置的键
-            String value = client.get("test");  // 修改这里，使用正确的键名
+            String value = client.get("test");  // 使用键名
             System.out.println("Value for test: " + value);
 
             // 测试不存在的键
