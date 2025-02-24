@@ -1,17 +1,10 @@
 #ifdef _WIN32
     #include <winsock2.h>
     #include <ws2tcpip.h>
-#else
-    #include <sys/socket.h>
-#endif
-#ifdef _WIN32
-    #include <WinSock2.h>
-#else
-    #include <netinet/in.h>
-#endif
-#ifdef _WIN32
     #include <io.h>
 #else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
     #include <unistd.h>
 #endif
 #include <fcntl.h>
