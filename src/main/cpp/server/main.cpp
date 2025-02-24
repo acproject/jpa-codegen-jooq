@@ -1,8 +1,8 @@
 #include "TcpServer.hpp"
 #include "CommandHandler.hpp"
 #include "DataStore.hpp"
-#include <stream>
 #include <string>
+#include <iostream>
 
 int main(int argc, char* argv[]) {
     DataStore store;
