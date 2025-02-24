@@ -42,10 +42,21 @@ public class MiniCacheClient {
 
     private String readResponse() throws IOException {
         char type = (char) reader.read();
+        String line;
+        
         switch (type) {
-            case '+' -> reader.readLine();
-            case '$' -> {
-                int length = Integer.parseInt(reader.readLine());
+            case '+' -> {  // 简单字符串
+                return reader.readLine();
+            }
+            case '-' -> {  // 错误消息
+                return "ERROR: " + reader.readLine();
+            }
+            case ':' -> {  // 整数
+                return reader.readLine();
+            }
+            case '$' -> {  // 批量字符串
+                line = reader.readLine();
+                int length = Integer.parseInt(line);
                 if (length == -1) {
                     return null;
                 }
@@ -54,9 +65,21 @@ public class MiniCacheClient {
                 reader.readLine(); // 消耗CRLF
                 return new String(data);
             }
-            // 其他类型的响应 todo
+            case '*' -> {  // 数组
+                line = reader.readLine();
+                int count = Integer.parseInt(line);
+                if (count == -1) {
+                    return null;
+                }
+                StringBuilder result = new StringBuilder();
+                for (int i = 0; i < count; i++) {
+                    if (i > 0) result.append(", ");
+                    result.append(readResponse());
+                }
+                return "[" + result + "]";
+            }
+            default -> throw new IOException("Unknown response type: " + type);
         }
-        return null;
     }
 
     public void close() throws IOException {
@@ -70,19 +93,56 @@ public class MiniCacheClient {
             MiniCacheClient client = new MiniCacheClient();
             client.connection("127.0.0.1", 6379);
 
-            // 设置键值对
-            client.set("test", "Hello World");
+            // 测试 PING 命令
+            System.out.println("\n=== Testing PING ===");
+            String pingResp = client.sendCommand("PING");
+            System.out.println("PING response: " + pingResp);
 
-            // 获取刚才设置的键
-            String value = client.get("test");  // 修改这里，使用正确的键名
-            System.out.println("Value for test: " + value);
+            // 测试 SET 和 GET 命令
+            System.out.println("\n=== Testing SET/GET ===");
+            client.set("test", "Hello World");
+            String value = client.get("test");
+            System.out.println("GET test: " + value);
+
+            // 测试 EXISTS 命令
+            System.out.println("\n=== Testing EXISTS ===");
+            String existsResp = client.sendCommand("EXISTS", "test");
+            System.out.println("EXISTS test: " + existsResp);
+
+            // 测试 DEL 命令
+            System.out.println("\n=== Testing DEL ===");
+            String delResp = client.sendCommand("DEL", "test");
+            System.out.println("DEL test: " + delResp);
+            System.out.println("GET after DEL: " + client.get("test"));
+
+            // 测试 INCR 命令
+            System.out.println("\n=== Testing INCR ===");
+            client.set("counter", "10");
+            String incrResp = client.sendCommand("INCR", "counter");
+            System.out.println("INCR counter: " + incrResp);
+            System.out.println("GET counter: " + client.get("counter"));
+
+            // 测试 SETNX 和 GETNX 命令（数值数组操作）
+            System.out.println("\n=== Testing SETNX/GETNX ===");
+            String setnxResp = client.sendCommand("SETNX", "numbers", "1.0", "2.0", "3.0", "4.0");
+            System.out.println("SETNX response: " + setnxResp);
+            String getnxResp = client.sendCommand("GETNX", "numbers");
+            System.out.println("GETNX response: " + getnxResp);
 
             // 测试不存在的键
+            System.out.println("\n=== Testing non-existent key ===");
             String nonExistValue = client.get("nonexistent");
-            System.out.println("Value for nonexistent: " + nonExistValue);
+            System.out.println("GET nonexistent: " + nonExistValue);
 
             client.close();
         }
+    }
+
+    // 添加通用命令发送方法
+    public String sendCommand(String... parts) throws IOException {
+        String command = encodeCommand(parts);
+        writer.println(command);
+        return readResponse();
     }
 }
 
