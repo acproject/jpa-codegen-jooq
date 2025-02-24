@@ -15,7 +15,11 @@ set(SOURCES
 include_directories(src/main/cpp/server)
 
 # 可执行文件
-add_executable(mini_cache_server ${SOURCES})
+add_executable(mini_cache_server 
+    src/main/cpp/server/main.cpp
+    src/main/cpp/server/CommandHandler.cpp
+    src/main/cpp/server/DataStore.cpp  # 添加这一行
+)
 
 # 如果是 MacOS，需要特别处理
 if(APPLE)
