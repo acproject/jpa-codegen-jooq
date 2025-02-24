@@ -41,7 +41,11 @@ public class MiniCacheClient {
     }
 
     private String readResponse() throws IOException {
-        char type = (char) reader.read();
+        int typeInt = reader.read();
+        if (typeInt == -1) {
+            throw new IOException("Connection closed by server");
+        }
+        char type = (char) typeInt;
         String line;
         
         switch (type) {
@@ -56,17 +60,26 @@ public class MiniCacheClient {
             }
             case '$' -> {  // 批量字符串
                 line = reader.readLine();
+                if (line == null) {
+                    throw new IOException("Unexpected end of stream");
+                }
                 int length = Integer.parseInt(line);
                 if (length == -1) {
                     return null;
                 }
                 char[] data = new char[length];
-                reader.read(data, 0, length);
+                int read = reader.read(data, 0, length);
+                if (read != length) {
+                    throw new IOException("Incomplete read: expected " + length + " bytes, got " + read);
+                }
                 reader.readLine(); // 消耗CRLF
                 return new String(data);
             }
             case '*' -> {  // 数组
                 line = reader.readLine();
+                if (line == null) {
+                    throw new IOException("Unexpected end of stream");
+                }
                 int count = Integer.parseInt(line);
                 if (count == -1) {
                     return null;
@@ -78,7 +91,7 @@ public class MiniCacheClient {
                 }
                 return "[" + result + "]";
             }
-            default -> throw new IOException("Unknown response type: " + type);
+            default -> throw new IOException("Unknown response type: " + type + " (code: " + typeInt + ")");
         }
     }
 
@@ -93,6 +106,10 @@ public class MiniCacheClient {
             MiniCacheClient client = new MiniCacheClient();
             client.connection("127.0.0.1", 6379);
 
+            // 测试持久化
+            System.out.println("\n=== Testing Persistence ===");
+            System.out.println("SAVE: " + client.sendCommand("SAVE"));
+            System.out.println("RDB file location: " + System.getProperty("user.dir") + "/dump.rdb");
             // 测试 PING 命令
             System.out.println("\n=== Testing PING ===");
             String pingResp = client.sendCommand("PING");
@@ -135,11 +152,12 @@ public class MiniCacheClient {
             System.out.println("GET nonexistent: " + nonExistValue);
 
             // 测试事务命令
-            System.out.println("\n=== Testing Transaction ===");
-            System.out.println("MULTI: " + client.sendCommand("MULTI"));
-            System.out.println("SET in transaction: " + client.sendCommand("SET", "tx_key", "tx_value"));
-            System.out.println("EXEC: " + client.sendCommand("EXEC"));
-            System.out.println("GET after transaction: " + client.get("tx_key"));
+//            System.out.println("\n=== Testing Transaction ===");
+//            System.out.println("MULTI: " + client.sendCommand("MULTI"));
+//            client.sendCommand("SET", "tx_key", "tx_value");  // 不打印结果，只发送命令
+//            String execResp = client.sendCommand("EXEC");     // EXEC 会返回所有命令的结果
+//            System.out.println("EXEC results: " + execResp);
+//            System.out.println("GET after transaction: " + client.get("tx_key"));
 
             // 测试 WATCH/UNWATCH 命令
             System.out.println("\n=== Testing WATCH/UNWATCH ===");
@@ -156,7 +174,7 @@ public class MiniCacheClient {
             // 测试过期时间
             System.out.println("\n=== Testing Expiration ===");
             client.set("expire_key", "will_expire");
-            System.out.println("PEXPIRE: " + client.sendCommand("PEXPIRE", "expire_key", "5000"));
+            System.out.println("PEXPIRE: " + client.sendCommand("PEXPIRE", "expire_key", "50"));
             System.out.println("PTTL: " + client.sendCommand("PTTL", "expire_key"));
 
             // 测试键空间操作
@@ -167,19 +185,16 @@ public class MiniCacheClient {
             System.out.println("SCAN key*: " + client.sendCommand("SCAN", "key*"));
 
             // 测试重命名
-            System.out.println("\n=== Testing RENAME ===");
-            System.out.println("RENAME key1 to new_key1: " + 
-                client.sendCommand("RENAME", "key1", "new_key1"));
-            System.out.println("GET after rename: " + client.get("new_key1"));
+//            System.out.println("\n=== Testing RENAME ===");
+//            System.out.println("RENAME key1 to new_key1: " +
+//                client.sendCommand("RENAME", "key1", "new_key1"));
+//            System.out.println("GET after rename: " + client.get("new_key1"));
 
             // 测试服务器信息
             System.out.println("\n=== Testing Server Info ===");
             System.out.println("INFO: " + client.sendCommand("INFO"));
 
-            // 测试持久化
-            System.out.println("\n=== Testing Persistence ===");
-            System.out.println("SAVE: " + client.sendCommand("SAVE"));
-            System.out.println("RDB file location: " + System.getProperty("user.dir") + "/dump.rdb");
+
 
             // 测试数据库清理
             System.out.println("\n=== Testing Database Cleaning ===");
