@@ -21,7 +21,3 @@ add_executable(mini_cache_server ${SOURCES})
 if(APPLE)
     target_compile_definitions(mini_cache_server PRIVATE PLATFORM_MACOS)
 endif()
-
-if(WIN32)
-    target_link_libraries(mini_cache_server ws2_32)
-endif()
