@@ -71,7 +71,10 @@ public class SqlGenerator implements MapToType {
                 yield switch (col.typeName()) {
                     case "int", "java.lang.Integer" -> "INTEGER";
                     case "long", "java.lang.Long" -> "BIGINT";
-                    case "java.lang.String" -> "VARCHAR(255)";
+                    case "java.lang.String" -> {
+                        int length = col.length();
+                        yield "VARCHAR(" + (length > 0 ? length : 255) + ")";
+                    }
                     case "java.time.LocalDate" -> "DATE";
                     case "java.time.LocalDateTime" -> "TIMESTAMP";
                     case "java.time.LocalTime" -> "TIME";
