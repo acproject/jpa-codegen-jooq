@@ -1,32 +1,10 @@
 #include "DataStore.hpp"
-
+#include <iostream>
 // 构造函数实现
 DataStore::DataStore(int db_count) : current_db(0) {
     databases.resize(db_count);
 }
 
-// 基本操作方法实现
-void DataStore::set(const std::string& key, const std::string& value) {
-    std::lock_guard<std::mutex> lock(mutex);
-    auto& db = databases[current_db];
-    
-    // 检查是否过期
-    auto meta_it = db.metadata.find(key);
-    if (meta_it != db.metadata.end() && isExpired(key)) {
-        del(key);
-    }
-
-    // 设置新值
-    for (auto& kv : db.data_array) {
-        if (kv.key == key && kv.valid) {
-            kv.value = value;
-            return;
-        }
-    }
-    
-    KeyValue newKv{key, value, true};
-    db.data_array.push_back(newKv);
-}
 
 std::string DataStore::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex);
@@ -66,31 +44,100 @@ void DataStore::pexpire(const std::string& key, long long milliseconds) {
 // 事务相关方法实现
 void DataStore::multi() {
     std::lock_guard<std::mutex> lock(mutex);
-    if (!current_transaction.active) {
-        current_transaction.active = true;
-        current_transaction.commands.clear();
+    current_transaction.active = true;
+    current_transaction.commands.clear();
+    current_transaction.watched_keys.clear();
+}
+
+void DataStore::set(const std::string& key, const std::string& value) {
+    std::lock_guard<std::mutex> lock(mutex);
+    auto& db = databases[current_db];
+    
+    // 如果在事务中，将命令添加到队列
+    if (current_transaction.active) {
+        current_transaction.commands.push_back({key, value});
+        return;
     }
+
+    // 正常的 set 操作
+    // 检查是否过期
+    auto meta_it = db.metadata.find(key);
+    if (meta_it != db.metadata.end() && isExpired(key)) {
+        del(key);
+    }
+
+    // 设置新值
+    for (auto& kv : db.data_array) {
+        if (kv.key == key && kv.valid) {
+            kv.value = value;
+            return;
+        }
+    }
+    
+    KeyValue newKv{key, value, true};
+
+    db.data_array.push_back(newKv);
+}
+
+// 私有方法，用于内部调用，不加锁
+void DataStore::discardInternal() {
+    current_transaction.active = false;
+    current_transaction.commands.clear();
+    current_transaction.watched_keys.clear();
+}
+
+// 公共方法，用于外部调用，需要加锁
+void DataStore::discard() {
+    std::lock_guard<std::mutex> lock(mutex);
+    discardInternal();
 }
 
 bool DataStore::exec() {
+    std::cout << "Executing transaction..." << std::endl;
     std::lock_guard<std::mutex> lock(mutex);
     if (!current_transaction.active) return false;
-
+    
+    std::cout << "Checking watched keys..." << std::endl;
     for (const auto& watched : current_transaction.watched_keys) {
         auto& db = databases[current_db];
         auto it = db.metadata.find(watched.key);
         if (it != db.metadata.end() && it->second.version != watched.version) {
-            discard();
+            discardInternal();  // 使用内部方法
             return false;
         }
     }
-
+    
+    std::cout << "Executing commands..." << std::endl;
+    auto& db = databases[current_db];
+    
+    // 直接执行命令，而不是调用 set 方法
     for (const auto& cmd : current_transaction.commands) {
-        set(cmd.first, cmd.second);
-        databases[current_db].metadata[cmd.first].version++;
+        // 检查是否过期
+        auto meta_it = db.metadata.find(cmd.first);
+        if (meta_it != db.metadata.end() && isExpired(cmd.first)) {
+            del(cmd.first);
+        }
+
+        // 设置新值
+        bool found = false;
+        for (auto& kv : db.data_array) {
+            if (kv.key == cmd.first && kv.valid) {
+                kv.value = cmd.second;
+                found = true;
+                break;
+            }
+        }
+        
+        if (!found) {
+            KeyValue newKv{cmd.first, cmd.second, true};
+            db.data_array.push_back(newKv);
+        }
+        
+        db.metadata[cmd.first].version++;
     }
 
-    discard();
+    std::cout << "Transaction executed successfully." << std::endl;
+    discardInternal();  // 使用内部方法
     return true;
 }
 
@@ -166,14 +213,50 @@ std::vector<float> DataStore::get_numeric(const std::string& key) const {
 }
 
 bool DataStore::rename(const std::string& oldKey, const std::string& newKey) {
+    std::cout << "Renaming key: " << oldKey << " to " << newKey << std::endl;
     std::lock_guard<std::mutex> lock(mutex);
     auto& db = databases[current_db];
     
-    std::string value = get(oldKey);
-    if (value == "(nil)") return false;
+    // 直接在数据库中查找和修改，避免调用其他加锁方法
+    bool found = false;
+    std::string value;
     
-    set(newKey, value);
-    del(oldKey);
+    // 检查并获取旧键的值
+    for (auto& kv : db.data_array) {
+        if (kv.key == oldKey && kv.valid) {
+            if (isExpired(oldKey)) {
+                kv.valid = false;
+                db.metadata.erase(oldKey);
+                return false;
+            }
+            value = kv.value;
+            kv.valid = false;
+            found = true;
+            break;
+        }
+    }
+    
+    if (!found) return false;
+    
+    // 设置新键值
+    bool newKeyExists = false;
+    for (auto& kv : db.data_array) {
+        if (kv.key == newKey && kv.valid) {
+            kv.value = value;
+            newKeyExists = true;
+            break;
+        }
+    }
+    
+    if (!newKeyExists) {
+        KeyValue newKv{newKey, value, true};
+        db.data_array.push_back(newKv);
+    }
+    
+    // 更新元数据
+    db.metadata.erase(oldKey);
+    
+    std::cout << "Rename completed successfully" << std::endl;
     return true;
 }
 
@@ -230,12 +313,6 @@ bool DataStore::watch(const std::string& key) {
         db.metadata[key].version
     });
     return true;
-}
-
-void DataStore::discard() {
-    std::lock_guard<std::mutex> lock(mutex);
-    current_transaction.active = false;
-    current_transaction.commands.clear();
 }
 
 void DataStore::unwatch() {
@@ -298,7 +375,7 @@ bool DataStore::saveRDB(const std::string& filename) {
             file.write(kv.value.c_str(), value_len);
 
             auto it = db.metadata.find(kv.key);
-            long long expire_time = (it != db.metadata.end()) ? 
+            long long expire_time = (it != db.metadata.end()) ?
                 it->second.expireTime : 0;
             file.write(reinterpret_cast<char*>(&expire_time), sizeof(expire_time));
         }

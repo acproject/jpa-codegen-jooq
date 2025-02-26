@@ -93,6 +93,7 @@ private:
     void queueCommand(const std::string& key, const std::string& value);
     void compact();
     void checkCompaction();
+    void discardInternal();
     int getCurrentDB() const;
     size_t getDBCount() const;
     bool isExpired(const std::string& key) const;

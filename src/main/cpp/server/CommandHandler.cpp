@@ -1,4 +1,5 @@
 #include "CommandHandler.hpp"
+#include <string>
 
 // 基础命令
 std::string CommandHandler::set_command(DataStore& store, const std::vector<std::string>& args) {
@@ -30,10 +31,12 @@ std::string CommandHandler::multi_command(DataStore& store, const std::vector<st
 }
 
 std::string CommandHandler::exec_command(DataStore& store, const std::vector<std::string>& args) {
-    if (store.exec()) {
+    auto results = store.exec();
+    if (!results) {
+        return "-ERR Transaction failed\r\n";
+    }else {
         return "+OK\r\n";
     }
-    return "-ERR Transaction failed\r\n";
 }
 
 std::string CommandHandler::discard_command(DataStore& store, const std::vector<std::string>& args) {

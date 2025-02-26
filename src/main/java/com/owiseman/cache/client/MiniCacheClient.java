@@ -152,12 +152,12 @@ public class MiniCacheClient {
             System.out.println("GET nonexistent: " + nonExistValue);
 
             // 测试事务命令
-//            System.out.println("\n=== Testing Transaction ===");
-//            System.out.println("MULTI: " + client.sendCommand("MULTI"));
-//            client.sendCommand("SET", "tx_key", "tx_value");  // 不打印结果，只发送命令
-//            String execResp = client.sendCommand("EXEC");     // EXEC 会返回所有命令的结果
-//            System.out.println("EXEC results: " + execResp);
-//            System.out.println("GET after transaction: " + client.get("tx_key"));
+            System.out.println("\n=== Testing Transaction ===");
+            System.out.println("MULTI: " + client.sendCommand("MULTI"));
+            client.sendCommand("SET", "tx_key", "tx_value");  // 不打印结果，只发送命令
+            String execResp = client.sendCommand("EXEC");     // EXEC 会返回所有命令的结果
+            System.out.println("EXEC results: " + execResp);
+            System.out.println("GET after transaction: " + client.get("tx_key"));
 
             // 测试 WATCH/UNWATCH 命令
             System.out.println("\n=== Testing WATCH/UNWATCH ===");
@@ -174,7 +174,7 @@ public class MiniCacheClient {
             // 测试过期时间
             System.out.println("\n=== Testing Expiration ===");
             client.set("expire_key", "will_expire");
-            System.out.println("PEXPIRE: " + client.sendCommand("PEXPIRE", "expire_key", "50"));
+            System.out.println("PEXPIRE: " + client.sendCommand("PEXPIRE", "expire_key", "5000"));
             System.out.println("PTTL: " + client.sendCommand("PTTL", "expire_key"));
 
             // 测试键空间操作
@@ -185,10 +185,10 @@ public class MiniCacheClient {
             System.out.println("SCAN key*: " + client.sendCommand("SCAN", "key*"));
 
             // 测试重命名
-//            System.out.println("\n=== Testing RENAME ===");
-//            System.out.println("RENAME key1 to new_key1: " +
-//                client.sendCommand("RENAME", "key1", "new_key1"));
-//            System.out.println("GET after rename: " + client.get("new_key1"));
+            System.out.println("\n=== Testing RENAME ===");
+            System.out.println("RENAME key1 to new_key1: " +
+                client.sendCommand("RENAME", "key1", "new_key1"));
+            System.out.println("GET after rename: " + client.get("new_key1"));
 
             // 测试服务器信息
             System.out.println("\n=== Testing Server Info ===");
