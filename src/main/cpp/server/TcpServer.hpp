@@ -37,6 +37,11 @@ private:
     void setup_server() {
         // 创建socket
         server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        
+        // 添加 SO_REUSEADDR 选项
+        int opt = 1;
+        setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        
         // 设置非阻塞模式
         int flags = fcntl(server_fd, F_GETFL, 0);
         fcntl(server_fd, F_SETFL, flags | O_NONBLOCK);
@@ -124,26 +129,36 @@ private:
     }
 
     void handle_client(int fd) {
-        struct ClientState state = clients[fd];
+        auto& state = clients[fd];  // 获取当前客户端的状态
         char buffer[4096];
-        
         ssize_t count = read(fd, buffer, sizeof(buffer));
-        if(count <= 0) {
-            // 关闭连接并从事件系统中移除
-            #if defined(__linux__)
-                epoll_ctl(event_fd, EPOLL_CTL_DEL, fd, nullptr);
-            #else
-                struct kevent ev;
-                EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
-                kevent(event_fd, &ev, 1, nullptr, 0, nullptr);
-            #endif
-            clients.erase(fd);
-            close(fd);
+        
+        if (count <= 0) {
+            if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+                // 正常关闭或错误
+                close_client(fd);
+                return;
+            }
+            // 非阻塞模式下暂时没有数据可读
             return;
         }
-
+        
         state.buffer.append(buffer, count);
         process_buffer(fd, state);
+    }
+
+    void close_client(int fd) {
+        #if defined(__linux__)
+            epoll_ctl(event_fd, EPOLL_CTL_DEL, fd, nullptr);
+        #else
+            struct kevent ev;
+            EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+            kevent(event_fd, &ev, 1, nullptr, 0, nullptr);
+        #endif
+        
+        clients.erase(fd);
+        shutdown(fd, SHUT_RDWR);  // 确保双向关闭
+        close(fd);
     }
 
     void process_buffer(int fd,   ClientState& state) {

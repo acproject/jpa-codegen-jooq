@@ -303,15 +303,29 @@ long long DataStore::pttl(const std::string& key) {
 
 bool DataStore::watch(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex);
-    if (!current_transaction.active) return false;
+    if (!current_transaction.active) {
+        // 只有在事务中才能执行 WATCH 命令
+        return false;
+    }
     
     auto& db = databases[current_db];
-    std::string current_value = get(key);
-    current_transaction.watched_keys.emplace_back(WatchedKey{
+    auto it = db.metadata.find(key);
+    long long version = (it != db.metadata.end()) ? it->second.version : 0;
+    
+    // 检查键是否已经被监视
+    for (const auto& watched : current_transaction.watched_keys) {
+        if (watched.key == key) {
+            return true;  // 已经在监视列表中
+        }
+    }
+    
+    // 添加到监视列表
+    current_transaction.watched_keys.push_back(WatchedKey{
         key,
-        current_value,
-        db.metadata[key].version
+        get(key),  // 获取当前值
+        version
     });
+    
     return true;
 }
 
