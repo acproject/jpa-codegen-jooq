@@ -41,7 +41,7 @@
         <dependency>
             <groupId>com.owiseman</groupId>
             <artifactId>jpa-codegen-jooq</artifactId>
-            <version>0.2.0</version>
+            <version>0.2.2</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -112,7 +112,7 @@
                         <path>
                             <groupId>com.owiseman</groupId>
                             <artifactId>jpa-codegen-jooq</artifactId>
-                            <version>0.2.0</version>
+                            <version>0.2.2</version>
                         </path>
                     </annotationProcessorPaths>
                     <compilerArgs>

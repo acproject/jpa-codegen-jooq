@@ -12,10 +12,11 @@ gradle clean shadowJar
 ```
 
 ### 使用方法
+**创建新项目后：**
 #### Gradle
-如果是Gradle在build.gradle中添加如下依赖``libs``是项目根目录下的一个文件夹
+如果是Gradle在新项目的build.gradle中添加如下依赖``libs``是项目根目录下的一个文件夹
 ```gradle
-compileOnly  files('libs/jpa-codegen-jooq-0.2.0.jar')
+compileOnly  files('libs/jpa-codegen-jooq-0.2.2.jar')
 compileJava {
 	options.compilerArgs += [
 			'-processor', 'com.owiseman.jpa.JpaEntityScannerProcessor'
@@ -33,14 +34,15 @@ gradle compileJava
 ```shell
 # Install it locally using Maven
 mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
+-Dfile=build/libs/jpa-codegen-jooq-0.2.2-all.jar  \
 -DgroupId=com.owiseman \
 -DartifactId=jpa-codegen-jooq \
--Dversion=0.2.0 \
+-Dversion=0.2.2 \
 -Dpackaging=jar \
 -DgeneratePom=true
 ```
-在pom.xml中添加插件内容如下：
+
+在新项目的pom.xml中添加插件内容如下：
 ```pom.xml
 <build>
     <plugins>
@@ -52,7 +54,7 @@ mvn install:install-file \
                             <path>
                                 <groupId>com.owiseman</groupId>
                                 <artifactId>jpa-codegen-jooq</artifactId>
-                                <version>0.2.0</version>
+                                <version>0.2.2</version>
                             </path>
                         </annotationProcessorPaths>
                         <compilerArgs>
@@ -74,7 +76,7 @@ mvn clean compile
 # 在maven项目中运行下面的命令，获得需要的classpath路径
 mvn dependency:build-classpath -Dmdep.outputFile=classpath.txt
 # 通过javac命令手动编译测试JpaEntityScannerProcessor是否生效
-javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.0-all.jar
+javac -cp $(cat classpath.txt):target/jpa-codegen-jooq-0.2.2-all.jar
       -processor com.owiseman.jpa.JpaEntityScannerProcessor \
       -d target/classes \
       src/main/java/com/example/entity/Students.java

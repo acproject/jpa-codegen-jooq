@@ -50,11 +50,7 @@ import java.io.IOException;
 import java.io.Writer;
 import java.lang.annotation.Annotation;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes({"javax.persistence.Entity", "jakarta.persistence.Entity"})
@@ -145,6 +141,11 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     private String getTableName(TypeElement typeElement) {
         Table tableAnnotation = typeElement.getAnnotation(Table.class);
+         // 修复点：明确处理注解不存在的情况
+        if (tableAnnotation == null || tableAnnotation.name().isEmpty()) {
+            return convertClassNameToTableName(typeElement.getSimpleName().toString());
+        }
+
         String tableName = tableAnnotation != null && !tableAnnotation.name().isEmpty() ? tableAnnotation.name()
                 : convertClassNameToTableName(typeElement.getSimpleName().toString());
         return tableName;
@@ -382,6 +383,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     private List<Index> parseIndexes(TypeElement entity) {
         Table tableAnnotation = entity.getAnnotation(Table.class);
+        if (tableAnnotation == null) {
+            return Collections.emptyList();
+        }
         return Arrays.stream(tableAnnotation.indexes())
                 .map(idx -> new Index(
                         idx.name(),

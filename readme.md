@@ -11,10 +11,11 @@ You need JDK 21 or later and Gradle installed to execute build.gradle scripts
 gradle clean shadowJar
 ``` 
 ### Usage
+**Created new project：**
 #### Gradle
-If it's Gradle, add the following dependency and codes to build.gradle, and ``libs`` is a folder in the root directory of the project
+If it's Gradle, add the following dependency and codes to build.gradle in the new project, and ``libs`` is a folder in the root directory of the project
 ```gradle
-compileOnly  files('libs/jpa-codegen-jooq-0.2.0.jar')
+compileOnly  files('libs/jpa-codegen-jooq-0.2.2.jar')
 compileJava {
 	options.compilerArgs += [
 			'-processor', 'com.owiseman.jpa.JpaEntityScannerProcessor'
@@ -33,14 +34,15 @@ At present, because there is no central repository for Maven, you need to manual
 ```shell
 # Install it locally using Maven
 mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.0-all.jar  \
+-Dfile=build/libs/jpa-codegen-jooq-0.2.2-all.jar  \
 -DgroupId=com.owiseman \
 -DartifactId=jpa-codegen-jooq \
--Dversion=0.2.0 \
+-Dversion=0.2.2 \
 -Dpackaging=jar \
 -DgeneratePom=true
 ```
-Add the plugin to the pom.xml as follows:
+
+add the plugin to the pom.xml of the new project, as follows:
 ```xml
 <build>
     <plugins>
@@ -52,7 +54,7 @@ Add the plugin to the pom.xml as follows:
                             <path>
                                 <groupId>com.owiseman</groupId>
                                 <artifactId>jpa-codegen-jooq</artifactId>
-                                <version>0.2.0</version>
+                                <version>0.2.2</version>
                             </path>
                         </annotationProcessorPaths>
                         <compilerArgs>
