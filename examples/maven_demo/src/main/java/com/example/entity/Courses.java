@@ -1,7 +1,7 @@
 package com.example.entity;
 
 
-import javax.persistence.*;
+import jakarta.persistence.*;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
