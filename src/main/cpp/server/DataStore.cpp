@@ -5,21 +5,194 @@ DataStore::DataStore(int db_count) : current_db(0) {
     databases.resize(db_count);
 }
 
+DataStore::~DataStore() {
+    // 析构函数，可以在这里进行一些清理工作
+    // 例如保存数据到磁盘等
+    try {
+        saveRDB("dump.rdb");  // 在析构时尝试保存数据
+    } catch (...) {
+        // 忽略异常，确保析构函数不抛出异常
+        std::cerr << "保存数据时发生错误" << std::endl;
+    }
+}
+
+// 添加 loadRDB 方法实现
+bool DataStore::loadRDB(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(mutex);
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "无法打开文件: " << filename << std::endl;
+        return false;
+    }
+
+    try {
+        // 读取魔数和版本号
+        // 检查文件大小
+        char magic[9] = {0};
+        file.read(magic, 8);
+        std::string magicStr(magic);
+        std::cout << "读取到的魔数: " << magicStr << std::endl;
+
+        file.seekg(0, std::ios::end);
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        
+        // 修改魔数检查逻辑，使用前缀匹配而不是完全匹配
+        if (magicStr.substr(0, 5) != "REDIS") {
+            std::cerr << "无效的 RDB 文件格式，魔数不匹配: " << magicStr << std::endl;
+            return false;
+        }
+
+        file.read(magic, 8);
+        magic[8] = '\0';  // 确保字符串正确终止
+        
+        std::cout << "读取到的魔数: " << magic << std::endl;
+        
+        if (std::string(magic) != "REDIS001") {
+            std::cerr << "无效的 RDB 文件格式，魔数不匹配: " << magic << std::endl;
+            return false;
+        }
+
+        // 读取数据库数量
+        uint32_t db_count;
+        file.read(reinterpret_cast<char*>(&db_count), sizeof(db_count));
+        
+        // 确保数据库数量合理
+        if (db_count > 100) {  // 设置一个合理的上限
+            std::cerr << "数据库数量异常: " << db_count << std::endl;
+            return false;
+        }
+        
+        // 调整数据库数量
+        databases.resize(db_count);
+
+        // 读取每个数据库的数据
+        for (uint32_t i = 0; i < db_count; ++i) {
+            size_t db_index;
+            file.read(reinterpret_cast<char*>(&db_index), sizeof(db_index));
+            
+            if (db_index >= databases.size()) {
+                std::cerr << "数据库索引超出范围: " << db_index << std::endl;
+                continue;
+            }
+            
+            auto& db = databases[db_index];
+            
+            uint32_t kv_count;
+            file.read(reinterpret_cast<char*>(&kv_count), sizeof(kv_count));
+            
+            for (uint32_t j = 0; j < kv_count; ++j) {
+                // 读取键
+                uint32_t key_len;
+                file.read(reinterpret_cast<char*>(&key_len), sizeof(key_len));
+                
+                std::string key(key_len, '\0');
+                file.read(&key[0], key_len);
+                
+                // 读取值
+                uint32_t value_len;
+                file.read(reinterpret_cast<char*>(&value_len), sizeof(value_len));
+                
+                std::string value(value_len, '\0');
+                file.read(&value[0], value_len);
+                
+                // 读取过期时间
+                long long expire_time;
+                file.read(reinterpret_cast<char*>(&expire_time), sizeof(expire_time));
+                
+                // 存储键值对
+                db.data[key] = value;
+                KeyValue kv{key, value, true};
+                db.data_array.push_back(kv);
+                
+                // 设置过期时间
+                if (expire_time > 0) {
+                    db.metadata[key].expireTime = expire_time;
+                }
+            }
+        }
+
+        std::cout << "成功加载 RDB 文件: " << filename << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "加载 RDB 文件时发生错误: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+// 清理过期键
+void DataStore::cleanExpiredKeys() {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    auto now = std::chrono::steady_clock::now();
+    
+    // 遍历所有数据库
+    for (auto& db : databases) {
+        // 创建一个临时列表存储需要删除的键
+        std::vector<std::string> keys_to_delete;
+        
+        // 检查所有设置了过期时间的键
+        for (auto it = db.expires.begin(); it != db.expires.end(); ++it) {
+            if (now >= it->second) {
+                keys_to_delete.push_back(it->first);
+            }
+        }
+        
+        // 删除过期的键
+        for (const auto& key : keys_to_delete) {
+            // 从主数据存储中删除
+            db.data.erase(key);
+            
+            // 从过期时间映射中删除
+            db.expires.erase(key);
+            
+            // 从 data_array 中标记为无效
+            for (auto& kv : db.data_array) {
+                if (kv.key == key && kv.valid) {
+                    kv.valid = false;
+                    break;
+                }
+            }
+            
+            // 从元数据中删除
+            db.metadata.erase(key);
+        }
+    }
+}
 
 std::string DataStore::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex);
     auto& db = databases[current_db];
-    
+    // 检查键是否存在
+    bool keyExists = false;
+    std::string value;
+
+    // 检查是否过期
     if (isExpired(key)) {
-        del(key);
+        std::cout << "Key " << key << " is expired, deleting it" << std::endl;
+        
+        // 直接在这里实现删除逻辑，而不是调用 del 方法
+        for (auto& kv : db.data_array) {
+            if (kv.key == key && kv.valid) {
+                kv.valid = false;
+                break;
+            }
+        }
+        db.metadata.erase(key);
+        
+        std::cout << "Key " << key << " not found" << std::endl;
         return "(nil)";
     }
 
+    // 从 data_array 中查找键
     for (const auto& kv : db.data_array) {
         if (kv.key == key && kv.valid) {
+            std::cout << "Found key " << key << " with value " << kv.value << std::endl;
             return kv.value;
         }
     }
+    // 如果没有找到键
+    std::cout << "Key " << key << " not found" << std::endl;
     return "(nil)";
 }
 
@@ -278,12 +451,38 @@ bool DataStore::isExpired(const std::string& key) const {
     auto now = std::chrono::system_clock::now();
     auto current = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()).count();
-    return it->second.expireTime <= current;
+        std::cout << "Checking expiration for key: " << key 
+              << ", expire time: " << it->second.expireTime 
+              << ", current time: " << current << std::endl;
+     return current >= it->second.expireTime;
 }
 
 bool DataStore::matchPattern(const std::string& str, const std::string& pattern) {
     // 简单实现，支持 * 通配符
     if (pattern == "*") return true;
+      // 处理前缀匹配，如 "key*"
+    if (pattern.size() > 0 && pattern.back() == '*') {
+        std::string prefix = pattern.substr(0, pattern.size() - 1);
+        return str.substr(0, prefix.size()) == prefix;
+    }
+    
+    // 处理后缀匹配，如 "*key"
+    if (pattern.size() > 0 && pattern.front() == '*') {
+        std::string suffix = pattern.substr(1);
+        return str.size() >= suffix.size() && 
+               str.substr(str.size() - suffix.size()) == suffix;
+    }
+    
+    // 处理中间匹配，如 "k*y"
+    size_t pos = pattern.find('*');
+    if (pos != std::string::npos) {
+        std::string prefix = pattern.substr(0, pos);
+        std::string suffix = pattern.substr(pos + 1);
+        
+        return str.size() >= prefix.size() + suffix.size() &&
+               str.substr(0, prefix.size()) == prefix &&
+               str.substr(str.size() - suffix.size()) == suffix;
+    }
     return str == pattern;
 }
 
@@ -292,12 +491,20 @@ long long DataStore::pttl(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex);
     auto& db = databases[current_db];
     auto it = db.metadata.find(key);
+    std::cout << "Checking if key exists: " << key << std::endl;
     if (it == db.metadata.end() || it->second.expireTime == 0) {
         return -1;
     }
+
     auto now = std::chrono::system_clock::now();
+    // 将时间点转换为可读格式
+    auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count();
+    std::cout << "Getting current time (ms since epoch): " << now_ms << std::endl;
+    
     auto current = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()).count();
+    std::cout << "Calculating remaining time..." << current << std::endl;
     return std::max(0LL, it->second.expireTime - current);
 }
 
@@ -318,11 +525,22 @@ bool DataStore::watch(const std::string& key) {
             return true;  // 已经在监视列表中
         }
     }
+
+    // 直接在这里获取键的值，而不是调用 get 方法
+    std::string value = "(nil)";
+    for (const auto& kv : db.data_array) {
+        if (kv.key == key && kv.valid) {
+            if (!isExpired(key)) {
+                value = kv.value;
+            }
+            break;
+        }
+    }
     
     // 添加到监视列表
     current_transaction.watched_keys.push_back(WatchedKey{
         key,
-        get(key),  // 获取当前值
+        value,  // 使用直接获取的值
         version
     });
     
@@ -359,12 +577,17 @@ const DataStore::Database& DataStore::getCurrentDatabase() const {
 bool DataStore::saveRDB(const std::string& filename) {
     std::lock_guard<std::mutex> lock(mutex);
     std::ofstream file(filename, std::ios::binary);
-    if (!file) return false;
+    if (!file) {
+        std::cerr << "Failed to open file for writing: " << filename << std::endl;
+        return false;
+    }
 
     // 写入魔数和版本号
-    const char magic[] = "REDIS0001";
+    const char magic[] = "REDIS001";  // 确保长度为 8 
+    std::cout << "写入魔数: " << magic << std::endl;
     file.write(magic, 8);
-
+    file.flush(); // 确保立即写入
+    
     // 写入数据库数量
     uint32_t db_count = databases.size();
     file.write(reinterpret_cast<char*>(&db_count), sizeof(db_count));

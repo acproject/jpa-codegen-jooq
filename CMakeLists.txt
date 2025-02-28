@@ -6,22 +6,76 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 源文件
-set(SOURCES
-    src/main/cpp/server/main.cpp
-)
-
 # 头文件目录
 include_directories(src/main/cpp/server)
+include_directories(src/main/cpp/client)
 
-# 可执行文件
-add_executable(mini_cache_server 
-    src/main/cpp/server/main.cpp
+# 设置库输出目录
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+
+
+# 创建 RespParser 库
+add_library(resp_parser SHARED src/main/cpp/server/RespParser.cpp)
+
+# 创建 DataStore 库
+add_library(data_store SHARED src/main/cpp/server/DataStore.cpp)
+
+# 创建 CommandHandler 库
+# 修改 command_handler 库的链接部分
+add_library(command_handler SHARED
     src/main/cpp/server/CommandHandler.cpp
-    src/main/cpp/server/DataStore.cpp  # 添加这一行
+)
+target_link_libraries(command_handler data_store)
+
+# 确保 data_store 库在 command_handler 之前构建
+add_dependencies(command_handler data_store)
+# 创建 TcpServer 库
+add_library(tcp_server SHARED src/main/cpp/server/TcpServer.cpp)
+
+target_link_libraries(
+    tcp_server 
+    resp_parser 
+    data_store 
+    command_handler
 )
 
-# 如果是 MacOS，需要特别处理
+# 服务器可执行文件
+add_executable(mini_cache_server src/main/cpp/server/main.cpp)
+
+target_link_libraries(mini_cache_server 
+    resp_parser 
+    data_store 
+    command_handler 
+    tcp_server
+)
+
+
+
+
+# 客户端可执行文件部分之前添加 readline 库的查找
+if(APPLE)
+    # macOS 上 readline 通常由 Homebrew 安装在 /usr/local 或 /opt/homebrew
+    find_library(READLINE_LIBRARY readline HINTS /usr/local/lib /opt/homebrew/lib)
+    find_library(NCURSES_LIBRARY ncurses HINTS /usr/local/lib /opt/homebrew/lib)
+    include_directories(/usr/local/include /opt/homebrew/include)
+else()
+    find_library(READLINE_LIBRARY readline)
+    find_library(NCURSES_LIBRARY ncurses)
+endif()
+
+# 客户端可执行文件
+add_executable(mini_cache_cli src/main/cpp/client/cli_main.cpp)
+target_link_libraries(mini_cache_cli 
+    resp_parser
+    ${READLINE_LIBRARY}
+    ${NCURSES_LIBRARY}
+)
+
+
+# 如果是MacOS， 需要特别处理
 if(APPLE)
     target_compile_definitions(mini_cache_server PRIVATE PLATFORM_MACOS)
+    target_compile_definitions(mini_cache_cli PRIVATE PLATFORM_MACOS)
 endif()

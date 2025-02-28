@@ -9,6 +9,11 @@
 
 class DataStore {
 public:
+    ~DataStore();
+
+    // 清理过期键
+    void cleanExpiredKeys();    
+
     // 保留结构体定义和函数声明
     struct KeyValue {
         std::string key;
@@ -19,8 +24,9 @@ public:
     };
 
     struct NumericValue {
+        std::string key;  // 添加键名
         float values[4];
-        bool valid;
+        bool valid = true;
         NumericValue() : values{0}, valid(true) {}
     };
 
@@ -31,6 +37,8 @@ public:
     };
 
     struct Database {
+        std::unordered_map<std::string, std::string> data;
+        std::unordered_map<std::string, std::chrono::steady_clock::time_point> expires;
         std::vector<KeyValue> data_array;
         std::vector<NumericValue> numeric_array;
         std::unordered_map<std::string, KeyMetadata> metadata;
