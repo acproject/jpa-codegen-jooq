@@ -23,13 +23,14 @@ add_library(resp_parser SHARED src/main/cpp/server/RespParser.cpp)
 
 # 创建 DataStore 库
 add_library(data_store SHARED src/main/cpp/server/DataStore.cpp)
-
+find_package(nlohmann_json REQUIRED)
 # 创建 CommandHandler 库
 # 修改 command_handler 库的链接部分
 add_library(command_handler SHARED
     src/main/cpp/server/CommandHandler.cpp
 )
 target_link_libraries(command_handler data_store)
+target_link_libraries(data_store PRIVATE nlohmann_json::nlohmann_json)
 
 # 确保 data_store 库在 command_handler 之前构建
 add_dependencies(command_handler data_store)
@@ -61,6 +62,7 @@ if(APPLE)
     # macOS 上 readline 通常由 Homebrew 安装在 /usr/local 或 /opt/homebrew
     find_library(READLINE_LIBRARY readline HINTS /usr/local/lib /opt/homebrew/lib)
     find_library(NCURSES_LIBRARY ncurses HINTS /usr/local/lib /opt/homebrew/lib)
+    find_package(nlohmann_json REQUIRED)
     include_directories(/usr/local/include /opt/homebrew/include)
 else()
     find_library(READLINE_LIBRARY readline)

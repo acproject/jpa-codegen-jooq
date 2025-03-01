@@ -57,141 +57,6 @@ size_t DataStore::getAvailableMemory() const {
         #endif
 }
 
-// 添加 loadRDB 方法实现
-bool DataStore::loadMCDB(const std::string &filename) {
-  std::lock_guard<std::mutex> lock(mutex);
-  std::ifstream file(filename, std::ios::binary);
-  if (!file) {
-    std::cerr << "Unable to open file: " << filename << std::endl;
-    return false;
-  }
-
-  try {
-    // 读取魔数
-    char magic[9] = {0};
-    file.read(magic, 8);
-    std::string magicStr(magic);
-    std::cout << "Magic number read: " << magicStr << std::endl;
-
-    // 检查魔数
-    if (magicStr != "MINCACHE") {
-      std::cerr << "Invalid MCDB file format, magic number mismatch: "
-                << magicStr << std::endl;
-      return false;
-    }
-
-    // 读取数据库数量
-    uint32_t db_count;
-    file.read(reinterpret_cast<char *>(&db_count), sizeof(db_count));
-    
-    // // 确保数据库数量合理
-    // if (db_count > 100) { // 设置一个合理的上限
-    //   std::cerr << "Abnormal database count: " << db_count << std::endl;
-    //   return false;
-    // }
-     // 使用新的验证方法
-    if (!validateDbCount(db_count)) {
-        return false;
-    }
-    
-    // 调整数据库数量
-    databases.resize(db_count);
-
-    // 读取每个数据库的数据
-    for (uint32_t i = 0; i < db_count; ++i) {
-      size_t db_index;
-      file.read(reinterpret_cast<char *>(&db_index), sizeof(db_index));
-      
-      if (db_index >= databases.size()) {
-        std::cerr << "Database index out of range: " << db_index << std::endl;
-        continue;
-      }
-      
-      auto &db = databases[db_index];
-      
-      // 读取字符串键值对数量
-      uint32_t kv_count;
-      file.read(reinterpret_cast<char *>(&kv_count), sizeof(kv_count));
-      
-      // 读取字符串键值对
-      for (uint32_t j = 0; j < kv_count; ++j) {
-        // 读取键
-        uint32_t key_len;
-        file.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
-        
-        std::string key(key_len, '\0');
-        file.read(&key[0], key_len);
-        
-        // 读取值
-        uint32_t value_len;
-        file.read(reinterpret_cast<char *>(&value_len), sizeof(value_len));
-        
-        std::string value(value_len, '\0');
-        file.read(&value[0], value_len);
-        
-        // 读取过期时间
-        long long expire_time;
-        file.read(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
-        
-        // 存储键值对
-        KeyValue kv{key, value, true};
-        db.data_array.push_back(kv);
-        
-        // 设置过期时间
-        if (expire_time > 0) {
-          db.metadata[key].expireTime = expire_time;
-        }
-      }
-      
-      // 读取数值数组数量
-      uint32_t nv_count;
-      file.read(reinterpret_cast<char *>(&nv_count), sizeof(nv_count));
-      std::cout << "Reading " << nv_count << " numeric values for database " << db_index << std::endl;
-      
-      // 读取数值数组
-      for (uint32_t j = 0; j < nv_count; ++j) {
-        // 读取键
-        uint32_t key_len;
-        file.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
-        
-        std::string key(key_len, '\0');
-        file.read(&key[0], key_len);
-        
-        // 读取数值数组长度
-        uint32_t values_len;
-        file.read(reinterpret_cast<char *>(&values_len), sizeof(values_len));
-        
-        // 读取数值数组内容
-        NumericValue nv;
-        nv.key = key;
-        nv.values.resize(values_len);
-        if (values_len > 0) {
-          file.read(reinterpret_cast<char *>(nv.values.data()),
-                    sizeof(float) * values_len);
-        }
-        
-        // 读取过期时间
-        long long expire_time;
-        file.read(reinterpret_cast<char *>(&expire_time),
-                  sizeof(expire_time));
-        
-        // 存储数值数组
-        db.numeric_array.push_back(nv);
-        
-        // 设置过期时间
-        if (expire_time > 0) {
-          db.metadata[key].expireTime = expire_time;
-        }
-      }
-    }
-
-    std::cout << "Successfully loaded MCDB file: " << filename << std::endl;
-    return true;
-  } catch (const std::exception &e) {
-    std::cerr << "Error loading MCDB file: " << e.what() << std::endl;
-    return false;
-  }
-}
 
 // 清理过期键
 void DataStore::cleanExpiredKeys() {
@@ -692,81 +557,292 @@ const DataStore::Database &DataStore::getCurrentDatabase() const {
 
 bool DataStore::saveMCDB(const std::string &filename) {
   std::lock_guard<std::mutex> lock(mutex);
-  std::ofstream file(filename, std::ios::binary);
+  
+  // 先写入临时文件，成功后再重命名
+  std::string tempFilename = filename + ".tmp";
+  std::ofstream file(tempFilename, std::ios::binary);
   if (!file) {
-    std::cerr << "Failed to open file for writing: " << filename << std::endl;
+    std::cerr << "Failed to open file for writing: " << tempFilename << std::endl;
     return false;
   }
 
-  // 写入魔数和版本号
-  const char magic[] = "MINCACHE"; // 确保长度为 8
-  std::cout << "Writing magic number: " << magic << std::endl;
-  file.write(magic, 8);
-  file.flush(); // 确保立即写入
+  try {
+    // 写入魔数和版本号
+    const char magic[] = "MINCACHE"; // 确保长度为 8
+    std::cout << "Writing magic number: " << magic << std::endl;
+    file.write(magic, 8);
+    
+    // 写入数据库数量
+    uint32_t db_count = databases.size();
+    file.write(reinterpret_cast<char *>(&db_count), sizeof(db_count));
 
-  // 写入数据库数量
-  uint32_t db_count = databases.size();
-  file.write(reinterpret_cast<char *>(&db_count), sizeof(db_count));
+    // 写入每个数据库的数据
+    for (size_t i = 0; i < databases.size(); ++i) {
+      auto &db = databases[i];
+      file.write(reinterpret_cast<char *>(&i), sizeof(i));
 
-  // 写入每个数据库的数据
-  for (size_t i = 0; i < databases.size(); ++i) {
-    auto &db = databases[i];
-    file.write(reinterpret_cast<char *>(&i), sizeof(i));
-
-    uint32_t kv_count = db.data_array.size();
-    file.write(reinterpret_cast<char *>(&kv_count), sizeof(kv_count));
-
-    for (const auto &kv : db.data_array) {
-      if (!kv.valid)
-        continue;
-
-      uint32_t key_len = kv.key.length();
-      file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
-      file.write(kv.key.c_str(), key_len);
-
-      uint32_t value_len = kv.value.length();
-      file.write(reinterpret_cast<char *>(&value_len), sizeof(value_len));
-      file.write(kv.value.c_str(), value_len);
-
-      auto it = db.metadata.find(kv.key);
-      long long expire_time =
-          (it != db.metadata.end()) ? it->second.expireTime : 0;
-      file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
-    }
-    // 写入数值数组
-    uint32_t nv_count = 0;
-    for (const auto &nv : db.numeric_array) {
-      if (nv.valid)
-        nv_count++;
-    }
-    file.write(reinterpret_cast<char *>(&nv_count), sizeof(nv_count));
-
-    for (const auto &nv : db.numeric_array) {
-      if (!nv.valid)
-        continue;
-
-      // 写入键
-      uint32_t key_len = nv.key.length();
-      file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
-      file.write(nv.key.c_str(), key_len);
-
-      // 写入数值数组长度
-      uint32_t values_len = nv.values.size();
-      file.write(reinterpret_cast<char *>(&values_len), sizeof(values_len));
-
-      // 写入数值数组内容
-      if (!nv.values.empty()) {
-        file.write(reinterpret_cast<const char *>(nv.values.data()),
-                   sizeof(float) * values_len);
+      // 计算有效的键值对数量
+      uint32_t valid_kv_count = 0;
+      for (const auto &kv : db.data_array) {
+        if (kv.valid) valid_kv_count++;
       }
+      
+      file.write(reinterpret_cast<char *>(&valid_kv_count), sizeof(valid_kv_count));
 
-      // 写入过期时间
-      auto it = db.metadata.find(nv.key);
-      long long expire_time =
-          (it != db.metadata.end()) ? it->second.expireTime : 0;
-      file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+      for (const auto &kv : db.data_array) {
+        if (!kv.valid)
+          continue;
+
+        uint32_t key_len = kv.key.length();
+        file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+        file.write(kv.key.c_str(), key_len);
+
+        uint32_t value_len = kv.value.length();
+        file.write(reinterpret_cast<char *>(&value_len), sizeof(value_len));
+        file.write(kv.value.c_str(), value_len);
+
+        auto it = db.metadata.find(kv.key);
+        long long expire_time =
+            (it != db.metadata.end()) ? it->second.expireTime : 0;
+        file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+      }
+      
+      // 计算有效的数值数组数量
+      uint32_t valid_nv_count = 0;
+      for (const auto &nv : db.numeric_array) {
+        if (nv.valid) valid_nv_count++;
+      }
+      
+      file.write(reinterpret_cast<char *>(&valid_nv_count), sizeof(valid_nv_count));
+
+      for (const auto &nv : db.numeric_array) {
+        if (!nv.valid)
+          continue;
+
+        // 写入键
+        uint32_t key_len = nv.key.length();
+        file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+        file.write(nv.key.c_str(), key_len);
+
+        // 写入数值数组长度
+        uint32_t values_len = nv.values.size();
+        file.write(reinterpret_cast<char *>(&values_len), sizeof(values_len));
+
+        // 写入数值数组内容
+        if (!nv.values.empty()) {
+          file.write(reinterpret_cast<const char *>(nv.values.data()),
+                    sizeof(float) * values_len);
+        }
+
+        // 写入过期时间
+        auto it = db.metadata.find(nv.key);
+        long long expire_time =
+            (it != db.metadata.end()) ? it->second.expireTime : 0;
+        file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+      }
     }
+    
+    // 确保所有数据都写入磁盘
+    file.flush();
+    
+    // 关闭文件
+    file.close();
+    
+    // 如果一切正常，重命名临时文件为正式文件
+    if (std::rename(tempFilename.c_str(), filename.c_str()) != 0) {
+      std::cerr << "Failed to rename temporary file: " << strerror(errno) << std::endl;
+      return false;
+    }
+    
+    std::cout << "Successfully saved MCDB file: " << filename << std::endl;
+    return true;
+  } catch (const std::exception &e) {
+    std::cerr << "Error saving MCDB file: " << e.what() << std::endl;
+    file.close();
+    // 删除临时文件
+    std::remove(tempFilename.c_str());
+    return false;
+  }
+}
+
+// 同时修改 loadMCDB 方法，增加更多的错误检查
+bool DataStore::loadMCDB(const std::string &filename) {
+  std::lock_guard<std::mutex> lock(mutex);
+  std::ifstream file(filename, std::ios::binary);
+  if (!file) {
+    std::cerr << "Unable to open file: " << filename << std::endl;
+    return false;
   }
 
-  return true;
+  try {
+    // 检查文件大小
+    file.seekg(0, std::ios::end);
+    std::streamsize fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    if (fileSize < 12) { // 至少需要魔数(8字节) + 数据库数量(4字节)
+      std::cerr << "Invalid MCDB file: file too small" << std::endl;
+      return false;
+    }
+    
+    // 读取魔数
+    char magic[9] = {0};
+    file.read(magic, 8);
+    std::string magicStr(magic);
+    std::cout << "Magic number read: " << magicStr << std::endl;
+
+    // 检查魔数
+    if (magicStr != "MINCACHE") {
+      std::cerr << "Invalid MCDB file format, magic number mismatch: "
+                << magicStr << std::endl;
+      return false;
+    }
+
+    // 读取数据库数量
+    uint32_t db_count;
+    file.read(reinterpret_cast<char *>(&db_count), sizeof(db_count));
+    
+    // 使用验证方法
+    if (!validateDbCount(db_count)) {
+        return false;
+    }
+    
+    // 创建临时数据库结构，只有在完全加载成功后才替换当前数据库
+    std::vector<Database> tempDatabases(db_count);
+
+    // 读取每个数据库的数据
+    for (uint32_t i = 0; i < db_count; ++i) {
+      size_t db_index;
+      file.read(reinterpret_cast<char *>(&db_index), sizeof(db_index));
+      
+      if (db_index >= db_count) {
+        std::cerr << "Database index out of range: " << db_index << std::endl;
+        continue;
+      }
+      
+      auto &db = tempDatabases[db_index];
+      
+      // 读取字符串键值对数量
+      uint32_t kv_count;
+      file.read(reinterpret_cast<char *>(&kv_count), sizeof(kv_count));
+      
+      // 合理性检查
+      if (kv_count > 10000000) { // 限制每个数据库最多1000万个键
+        std::cerr << "Abnormal key-value count: " << kv_count << std::endl;
+        return false;
+      }
+      
+      // 读取字符串键值对
+      for (uint32_t j = 0; j < kv_count; ++j) {
+        // 读取键
+        uint32_t key_len;
+        file.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+        
+        // 合理性检查
+        if (key_len > 1024 * 1024) { // 限制键大小不超过1MB
+          std::cerr << "Key size too large: " << key_len << std::endl;
+          return false;
+        }
+        
+        std::string key(key_len, '\0');
+        file.read(&key[0], key_len);
+        
+        // 读取值
+        uint32_t value_len;
+        file.read(reinterpret_cast<char *>(&value_len), sizeof(value_len));
+        
+        // 合理性检查
+        if (value_len > 10 * 1024 * 1024) { // 限制值大小不超过10MB
+          std::cerr << "Value size too large: " << value_len << std::endl;
+          return false;
+        }
+        
+        std::string value(value_len, '\0');
+        file.read(&value[0], value_len);
+        
+        // 读取过期时间
+        long long expire_time;
+        file.read(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+        
+        // 存储键值对
+        KeyValue kv{key, value, true};
+        db.data_array.push_back(kv);
+        
+        // 设置过期时间
+        if (expire_time > 0) {
+          db.metadata[key].expireTime = expire_time;
+        }
+      }
+      
+      // 读取数值数组数量
+      uint32_t nv_count;
+      file.read(reinterpret_cast<char *>(&nv_count), sizeof(nv_count));
+      std::cout << "Reading " << nv_count << " numeric values for database " << db_index << std::endl;
+      
+      // 合理性检查
+      if (nv_count > 10000000) { // 限制每个数据库最多1000万个数值数组
+        std::cerr << "Abnormal numeric value count: " << nv_count << std::endl;
+        return false;
+      }
+      
+      // 读取数值数组
+      for (uint32_t j = 0; j < nv_count; ++j) {
+        // 读取键
+        uint32_t key_len;
+        file.read(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+        
+        // 合理性检查
+        if (key_len > 1024 * 1024) { // 限制键大小不超过1MB
+          std::cerr << "Key size too large: " << key_len << std::endl;
+          return false;
+        }
+        
+        std::string key(key_len, '\0');
+        file.read(&key[0], key_len);
+        
+        // 读取数值数组长度
+        uint32_t values_len;
+        file.read(reinterpret_cast<char *>(&values_len), sizeof(values_len));
+        
+        // 合理性检查
+        if (values_len > 10000000) { // 限制数值数组长度不超过1000万
+          std::cerr << "Numeric array size too large: " << values_len << std::endl;
+          return false;
+        }
+        
+        // 读取数值数组内容
+        NumericValue nv;
+        nv.key = key;
+        nv.values.resize(values_len);
+        nv.valid = true;
+        
+        if (values_len > 0) {
+          file.read(reinterpret_cast<char *>(nv.values.data()),
+                    sizeof(float) * values_len);
+        }
+        
+        // 读取过期时间
+        long long expire_time;
+        file.read(reinterpret_cast<char *>(&expire_time),
+                  sizeof(expire_time));
+        
+        // 存储数值数组
+        db.numeric_array.push_back(nv);
+        
+        // 设置过期时间
+        if (expire_time > 0) {
+          db.metadata[key].expireTime = expire_time;
+        }
+      }
+    }
+
+    // 所有数据加载成功，替换当前数据库
+    databases = std::move(tempDatabases);
+    
+    std::cout << "Successfully loaded MCDB file: " << filename << std::endl;
+    return true;
+  } catch (const std::exception &e) {
+    std::cerr << "Error loading MCDB file: " << e.what() << std::endl;
+    return false;
+  }
 }
