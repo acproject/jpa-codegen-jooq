@@ -6,11 +6,19 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
+#ifdef __APPLE__
+#include <sys/sysctl.h>  // 添加系统头文件，用于 sysctl 函数
+#endif
 
 class DataStore {
+private:
+    static constexpr size_t DEFAULT_MAX_DBS = 16;      // 默认数据库数量
+    static constexpr size_t ABSOLUTE_MAX_DBS = 1024;   // 绝对最大数据库数量
+    size_t max_databases;  
 public:
     ~DataStore();
 
+    DataStore(size_t max_dbs = DEFAULT_MAX_DBS);
     // 清理过期键
     void cleanExpiredKeys();    
 
@@ -57,8 +65,6 @@ public:
         Transaction() : active(false) {}
     };
 
-    // 构造函数
-    explicit DataStore(int db_count = 16);
 
     // 公共方法声明
     void set(const std::string& key, const std::string& value);
@@ -83,6 +89,7 @@ public:
     bool set_numeric(const std::string& key, const std::vector<float>& values);
     std::vector<float> get_numeric(const std::string& key) const;
     bool rename(const std::string& oldKey, const std::string& newKey);
+    bool validateDbCount(uint32_t db_count) const;
 
 private:
     std::vector<Database> databases;
@@ -107,4 +114,5 @@ private:
     bool isExpired(const std::string& key) const;
     bool matchPattern(const std::string& str, const std::string& pattern);
     int delMultiple(const std::vector<std::string>& keys);
+    size_t getAvailableMemory() const;                            // 当前配置
 };

@@ -1,9 +1,11 @@
 #include "DataStore.hpp"
 #include <iostream>
 // 构造函数实现
-DataStore::DataStore(int db_count) : current_db(0) {
-  databases.resize(db_count);
+DataStore::DataStore(size_t max_dbs) : current_db(0) {
+    max_databases = std::min(max_dbs, ABSOLUTE_MAX_DBS);
+    databases.resize(DEFAULT_MAX_DBS);  // 初始只分配默认数量
 }
+
 
 DataStore::~DataStore() {
   // 析构函数，可以在这里进行一些清理工作
@@ -14,6 +16,45 @@ DataStore::~DataStore() {
     // 忽略异常，确保析构函数不抛出异常
     std::cerr << "Error occurred while saving data" << std::endl;
   }
+}
+
+bool DataStore::validateDbCount(uint32_t db_count) const {
+   if (db_count == 0) {
+            std::cerr << "Invalid database count: 0" << std::endl;
+            return false;
+        }
+        
+        if (db_count > max_databases) {
+            std::cerr << "Database count " << db_count 
+                      << " exceeds maximum allowed (" << max_databases << ")" << std::endl;
+            return false;
+        }
+
+        // 检查系统资源
+        size_t estimated_memory = db_count * sizeof(Database);  // 估算内存使用
+        if (estimated_memory > getAvailableMemory() * 0.75) {  // 使用不超过可用内存的75%
+            std::cerr << "Insufficient memory for " << db_count << " databases" << std::endl;
+            return false;
+        }
+
+        return true;
+}
+
+size_t DataStore::getAvailableMemory() const {
+  // 获取系统可用内存
+   #ifdef __APPLE__
+            int mib[2] = { CTL_HW, HW_MEMSIZE };
+            u_int namelen = sizeof(mib) / sizeof(mib[0]);
+            uint64_t size;
+            size_t len = sizeof(size);
+            
+            if (sysctl(mib, namelen, &size, &len, NULL, 0) < 0) {
+                return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+            }
+            return size;
+        #else
+            return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+        #endif
 }
 
 // 添加 loadRDB 方法实现
@@ -43,10 +84,14 @@ bool DataStore::loadMCDB(const std::string &filename) {
     uint32_t db_count;
     file.read(reinterpret_cast<char *>(&db_count), sizeof(db_count));
     
-    // 确保数据库数量合理
-    if (db_count > 100) { // 设置一个合理的上限
-      std::cerr << "Abnormal database count: " << db_count << std::endl;
-      return false;
+    // // 确保数据库数量合理
+    // if (db_count > 100) { // 设置一个合理的上限
+    //   std::cerr << "Abnormal database count: " << db_count << std::endl;
+    //   return false;
+    // }
+     // 使用新的验证方法
+    if (!validateDbCount(db_count)) {
+        return false;
     }
     
     // 调整数据库数量
