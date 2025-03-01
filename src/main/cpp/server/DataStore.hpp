@@ -15,8 +15,19 @@ private:
     static constexpr size_t DEFAULT_MAX_DBS = 16;      // 默认数据库数量
     static constexpr size_t ABSOLUTE_MAX_DBS = 1024;   // 绝对最大数据库数量
     size_t max_databases;  
+    std::atomic<int> changeCount;  // 跟踪变更次数
 public:
     ~DataStore();
+
+    // 获取并重置变更计数
+    int getAndResetChangeCount() {
+        return changeCount.exchange(0);
+    }
+
+    // 增加变更计数
+    void incrementChangeCount() {
+        changeCount++;
+    }
 
     DataStore(size_t max_dbs = DEFAULT_MAX_DBS);
     // 清理过期键

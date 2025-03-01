@@ -1,10 +1,5 @@
 #include "DataStore.hpp"
 #include <iostream>
-// 构造函数实现
-DataStore::DataStore(size_t max_dbs) : current_db(0) {
-    max_databases = std::min(max_dbs, ABSOLUTE_MAX_DBS);
-    databases.resize(DEFAULT_MAX_DBS);  // 初始只分配默认数量
-}
 
 
 DataStore::~DataStore() {
@@ -16,6 +11,11 @@ DataStore::~DataStore() {
     // 忽略异常，确保析构函数不抛出异常
     std::cerr << "Error occurred while saving data" << std::endl;
   }
+}
+
+DataStore::DataStore(size_t max_dbs) : current_db(0), changeCount(0) {
+    max_databases = std::min(max_dbs, ABSOLUTE_MAX_DBS);
+    databases.resize(DEFAULT_MAX_DBS);  // 初始只分配默认数量
 }
 
 bool DataStore::validateDbCount(uint32_t db_count) const {
@@ -318,13 +318,14 @@ void DataStore::set(const std::string &key, const std::string &value) {
   for (auto &kv : db.data_array) {
     if (kv.key == key && kv.valid) {
       kv.value = value;
+      incrementChangeCount();  // 增加变更计数
       return;
     }
   }
 
   KeyValue newKv{key, value, true};
-
   db.data_array.push_back(newKv);
+  incrementChangeCount();  // 增加变更计数
 }
 
 // 私有方法，用于内部调用，不加锁
@@ -383,6 +384,7 @@ bool DataStore::exec() {
     }
 
     db.metadata[cmd.first].version++;
+    incrementChangeCount();  // 增加变更计数
   }
 
   std::cout << "Transaction executed successfully." << std::endl;
@@ -399,6 +401,7 @@ int DataStore::del(const std::string &key) {
     if (kv.key == key && kv.valid) {
       kv.valid = false;
       db.metadata.erase(key);
+      incrementChangeCount();  
       return 1;
     }
   }

@@ -13,8 +13,10 @@ include_directories(src/main/cpp/client)
 # 设置库输出目录
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_CONF_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/conf)
 
-
+# 创建 ConfigParser 库
+add_library(config_parser SHARED src/main/cpp/server/ConfigParser.cpp)
 
 # 创建 RespParser 库
 add_library(resp_parser SHARED src/main/cpp/server/RespParser.cpp)
@@ -39,6 +41,7 @@ target_link_libraries(
     resp_parser 
     data_store 
     command_handler
+    config_parser
 )
 
 # 服务器可执行文件
@@ -49,9 +52,8 @@ target_link_libraries(mini_cache_server
     data_store 
     command_handler 
     tcp_server
+    config_parser
 )
-
-
 
 
 # 客户端可执行文件部分之前添加 readline 库的查找
@@ -79,3 +81,6 @@ if(APPLE)
     target_compile_definitions(mini_cache_server PRIVATE PLATFORM_MACOS)
     target_compile_definitions(mini_cache_cli PRIVATE PLATFORM_MACOS)
 endif()
+
+# 复制配置文件到输出目录
+file(COPY ${CMAKE_SOURCE_DIR}/src/main/cpp/conf/mcs.conf DESTINATION ${CMAKE_CONF_OUTPUT_DIRECTORY})

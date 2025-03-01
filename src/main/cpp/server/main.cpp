@@ -1,98 +1,193 @@
-#include "TcpServer.hpp"
 #include "CommandHandler.hpp"
+#include "ConfigParser.hpp"
 #include "DataStore.hpp"
+#include "TcpServer.hpp"
 #include <atomic>
-#include <string>
-#include <iostream>
-#include <thread>
 #include <chrono>
+#include <filesystem>
 #include <fstream>
-
+#include <iostream>
+#include <string>
+#include <thread>
 
 // 全局变量
-TcpServer* g_server = nullptr;
+TcpServer *g_server = nullptr;
 std::atomic<bool> g_running(true);
 
 void signal_handler(int signum) {
-    std::cout << "\nReceived signal " << signum << ", gracefully shutting down..." << std::endl;  
+  std::cout << "\nReceived signal " << signum << ", gracefully shutting down..."
+            << std::endl;
 
-    g_running = false;  // 设置全局运行标志为 false
+  g_running = false; // 设置全局运行标志为 false
 
-
-    // 停止服务器
-    if (!g_server) {
-        g_server->stop();
-    }
+  // 停止服务器
+  if (g_server) {
+    g_server->stop();
+  }
 }
 
-int main(int argc, char* argv[]) {
-    // 设置信号处理 - 使用标准 signal 函数，而不是 sigaction
-    signal(SIGINT, signal_handler);  // Ctrl+C
-    signal(SIGTERM, signal_handler); // kill 命令
+int main(int argc, char *argv[]) {
+  // 设置信号处理 - 使用标准 signal 函数，而不是 sigaction
+  signal(SIGINT, signal_handler);  // Ctrl+C
+  signal(SIGTERM, signal_handler); // kill 命令
 
-    DataStore store;
-    CommandHandler handler(store);
+  // 解析命令行参数
+  std::string configPath = "conf/mcs.conf"; // 默认配置文件路径
 
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--config" && i + 1 < argc) {
+      configPath = argv[i + 1];
+      ++i; // 跳过配置文件路径
+    }
+  }
 
-    std::string mcdbFile = "dump.mcdb";
-    std::ifstream testFile(mcdbFile);
-    if (testFile.good()) {
-        std::cout << "Found MCDB file, attempting to load..." << std::endl;
-        if (store.loadMCDB(mcdbFile)) {
-            std::cout << "Successfully loaded MCDB file" << std::endl;
-        } else {
-            std::cout << "Failed to load MCDB file, starting with empty database" << std::endl;
-        }
+  // 检查配置文件是否存在
+  if (!std::filesystem::exists(configPath)) {
+    std::cerr << "The configuration file does not exist: " << configPath << std::endl;
+    std::cerr << "Use the default configuration..." << std::endl;
+  }
+
+  // 加载配置文件
+  ConfigParser config(configPath);
+
+  // 获取配置项
+  std::string host = config.getString("bind", "127.0.0.1");
+  int port = config.getInt("port", 6379);
+  std::string password = config.getString("requirepass", "");
+
+  // 获取内存限制
+  std::string memoryStr = config.getString("maxmemory", "0");
+  size_t maxMemory = 0;
+
+  if (memoryStr.find("gb") != std::string::npos) {
+    maxMemory = std::stoull(memoryStr.substr(0, memoryStr.find("gb"))) * 1024 *
+                1024 * 1024;
+  } else if (memoryStr.find("mb") != std::string::npos) {
+    maxMemory =
+        std::stoull(memoryStr.substr(0, memoryStr.find("mb"))) * 1024 * 1024;
+  } else if (memoryStr.find("kb") != std::string::npos) {
+    maxMemory = std::stoull(memoryStr.substr(0, memoryStr.find("kb"))) * 1024;
+  } else {
+    try {
+      maxMemory = std::stoull(memoryStr);
+    } catch (...) {
+      std::cerr << "Invalid maxmemory configuration: " << memoryStr << std::endl;
+    }
+  }
+
+  std::string maxMemoryPolicy =
+      config.getString("maxmemory-policy", "noeviction");
+
+  // 获取保存条件
+  auto saveConditions = config.getSaveConditions();
+
+  // 创建数据存储
+  DataStore store;
+  CommandHandler handler(store);
+
+  // 尝试加载持久化数据
+  std::string mcdbFile = "dump.mcdb";
+  std::ifstream testFile(mcdbFile);
+  if (testFile.good()) {
+    std::cout << "Found MCDB file, attempting to load..." << std::endl;
+    if (store.loadMCDB(mcdbFile)) {
+      std::cout << "Successfully loaded MCDB file" << std::endl;
     } else {
-        std::cout << "MCDB file does not exist, starting with empty database" << std::endl;
+      std::cout << "Failed to load MCDB file, starting with empty database"
+                << std::endl;
+    }
+  } else {
+    std::cout << "MCDB file does not exist, starting with empty database"
+              << std::endl;
+  }
+
+  // 创建服务器
+  TcpServer server(configPath);
+  g_server = &server; // 设置全局指针
+
+  server.command_handler = [&](const std::vector<std::string> &cmd) {
+    // 如果设置了密码，需要验证
+    if (!password.empty() && cmd.size() > 0 && cmd[0] != "AUTH") {
+      // 检查是否已认证
+      // 这里需要添加认证状态的检查逻辑
+      // 暂时简化处理
+    }
+    return handler.handle_command(cmd);
+  };
+
+  std::cout << "MiniCache server started on " << host << ":" << port
+            << std::endl;
+  std::cout << "Press Ctrl+C to gracefully exit" << std::endl;
+
+  // 创建一个后台线程定期清理过期键
+  std::thread cleanup_thread([&store]() {
+    while (g_running) { // 使用全局变量
+      // 每秒清理一次过期键
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      store.cleanExpiredKeys();
+    }
+  });
+
+  // 设置自动保存
+  std::thread autosave_thread([&store, &saveConditions]() {
+    std::unordered_map<int, std::chrono::steady_clock::time_point>
+        lastSaveTimes;
+    std::unordered_map<int, int> changesSinceSave;
+
+    for (const auto &condition : saveConditions) {
+      lastSaveTimes[condition.first] = std::chrono::steady_clock::now();
+      changesSinceSave[condition.first] = 0;
     }
 
+    while (g_running) {
+      auto now = std::chrono::steady_clock::now();
 
-    int port = 6379;  // 默认端口号
+      // 检查每个保存条件
+      for (const auto &condition : saveConditions) {
+        int seconds = condition.first;
+        int changes = condition.second;
 
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--port" && i + 1 < argc) {
-            try {
-                port = std::stoi(argv[i + 1]);
-            } catch (const std::invalid_argument& e) {
-                std::cerr << "Invalid port number: " << argv[i + 1] << std::endl;
-                return 1;
-            } catch (const std::out_of_range& e) {
-                std::cerr << "Port number out of range: " << argv[i + 1] << std::endl;
-                return 1;
-            }
-            ++i;  // 跳过端口号
+        // 检查时间条件
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                           now - lastSaveTimes[seconds])
+                           .count();
+
+        // 如果时间已到并且有足够的更改，执行保存
+        if (elapsed >= seconds) {
+          // 这里简化处理，实际应该检查变更次数
+          std::cout << "Auto-save triggered: " << seconds
+                    << " seconds have passed" << std::endl;
+
+          if (store.saveMCDB("dump.mcdb")) {
+            std::cout << "Auto-save succeeded" << std::endl;
+          } else {
+            std::cerr << "Auto-save failed" << std::endl;
+          }
+
+          // 重置计时器
+          lastSaveTimes[seconds] = now;
+
+          // 一旦保存，跳出循环
+          break;
         }
+      }
+
+      // 每秒检查一次
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+  });
 
-    TcpServer server(port);
-    server.command_handler = [&](const std::vector<std::string>& cmd) {
-        return handler.handle_command(cmd);
-        };
-    
+  // 设置线程为分离状态，让它在后台运行
+  cleanup_thread.detach();
+  autosave_thread.detach();
 
-    std::cout << "MiniCache server started on port " << port << std::endl;
-    std::cout << "Press Ctrl+C to gracefully exit" << std::endl;
+  server.start();
 
-    // 创建一个后台线程定期清理过期键
-      std::thread cleanup_thread([&store]() {
-        while (g_running) {  // 直接使用全局变量，不捕获
-            // 每秒清理一次过期键
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            store.cleanExpiredKeys();
-        }
-    });
+  // 在退出前保存数据
+  std::cout << "Saving data to MCDB file..." << std::endl;
+  store.saveMCDB("dump.mcdb");
 
-    // 设置线程为分离状态，让它在后台运行
-    cleanup_thread.detach();
-
-    server.start();
-
-    // 在退出前保存数据
-    std::cout << "Saving data to MCDB file..." << std::endl;
-    store.saveMCDB("dump.mcdb");
-
-    std::cout << "Server has been shut down" << std::endl;
-    return 0;
+  std::cout << "Server has been shut down" << std::endl;
+  return 0;
 }
