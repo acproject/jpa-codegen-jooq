@@ -122,7 +122,7 @@ std::string CommandHandler::ping_command(DataStore& store, const std::vector<std
 }
 
 std::string CommandHandler::save_command(DataStore& store, const std::vector<std::string>& args) {
-    if(store.saveRDB("dump.rdb")) {
+    if(store.saveMCDB("dump.mcdb")) {
         return "+OK\r\n";
     } else {
         return "-ERR Failed to save RDB\r\n";
@@ -160,11 +160,11 @@ std::string CommandHandler::incr_command(DataStore& store, const std::vector<std
 }
 
 std::string CommandHandler::set_numeric_command(DataStore& store, const std::vector<std::string>& args) {
-    if(args.size() != 6) return protocol_error("Wrong number of arguments for SETNX");
+     if(args.size() < 3) return protocol_error("Wrong number of arguments for SETNX");
     
     try {
         std::vector<float> values;
-        for(size_t i = 2; i < 6; ++i) {
+        for(size_t i = 2; i < args.size(); ++i) {
             values.push_back(std::stof(args[i]));
         }
         

@@ -38,18 +38,18 @@ public:
 
 private:
  void setup_server() {
-    std::cout << "设置服务器..." << std::endl;
+    std::cout << "Setting up server..." << std::endl;
     // 创建socket
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
-        std::cerr << "创建套接字失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to create socket: " << strerror(errno) << std::endl;
         return;
     }
     
     // 添加 SO_REUSEADDR 选项
     int opt = 1;
     if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        std::cerr << "设置套接字选项失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to set socket options: " << strerror(errno) << std::endl;
         close(server_fd);
         return;
     }
@@ -57,13 +57,13 @@ private:
     // 设置非阻塞模式
     int flags = fcntl(server_fd, F_GETFL, 0);
     if (flags < 0) {
-        std::cerr << "获取套接字标志失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to get socket flags: " << strerror(errno) << std::endl;
         close(server_fd);
         return;
     }
     
     if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
-        std::cerr << "设置非阻塞模式失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to set non-blocking mode: " << strerror(errno) << std::endl;
         close(server_fd);
         return;
     }
@@ -75,25 +75,25 @@ private:
     addr.sin_addr.s_addr = INADDR_ANY;
     
     if (bind(server_fd, (sockaddr*)&addr, sizeof(addr)) < 0) {
-        std::cerr << "绑定端口失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to bind port: " << strerror(errno) << std::endl;
         close(server_fd);
         return;
     }
     
     // 监听
     if (listen(server_fd, SOMAXCONN) < 0) {
-        std::cerr << "监听失败: " << strerror(errno) << std::endl;
+        std::cerr << "Failed to listen: " << strerror(errno) << std::endl;
         close(server_fd);
         return;
     }
     
-    std::cout << "服务器套接字设置完成，监听端口 " << port << std::endl;
+    std::cout << "Server socket setup complete, listening on port " << port << std::endl;
     
     #if defined(__linux__)
         // 创建epoll实例
         event_fd = epoll_create1(0);
         if (event_fd < 0) {
-            std::cerr << "创建epoll实例失败: " << strerror(errno) << std::endl;
+            std::cerr << "Failed to create epoll instance: " << strerror(errno) << std::endl;
             close(server_fd);
             return;
         }
@@ -102,7 +102,7 @@ private:
         ev.events = EPOLLIN;
         ev.data.fd = server_fd;
         if (epoll_ctl(event_fd, EPOLL_CTL_ADD, server_fd, &ev) < 0) {
-            std::cerr << "添加服务器套接字到epoll失败: " << strerror(errno) << std::endl;
+            std::cerr << "Failed to add server socket to epoll: " << strerror(errno) << std::endl;
             close(event_fd);
             close(server_fd);
             return;
@@ -111,7 +111,7 @@ private:
         // 创建kqueue实例
         event_fd = kqueue();
         if (event_fd < 0) {
-            std::cerr << "创建kqueue实例失败: " << strerror(errno) << std::endl;
+            std::cerr << "Failed to create kqueue instance: " << strerror(errno) << std::endl;
             close(server_fd);
             return;
         }
@@ -119,20 +119,20 @@ private:
         struct kevent ev;
         EV_SET(&ev, server_fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
         if (kevent(event_fd, &ev, 1, nullptr, 0, nullptr) < 0) {
-            std::cerr << "添加服务器套接字到kqueue失败: " << strerror(errno) << std::endl;
+            std::cerr << "Failed to add server socket to kqueue: " << strerror(errno) << std::endl;
             close(event_fd);
             close(server_fd);
             return;
         }
     #endif
     
-    std::cout << "事件处理器设置完成" << std::endl;
+    std::cout << "Event handler setup complete" << std::endl;
 }
 
 // 修改 event_loop 方法，减少不必要的日志输出，并确保正确处理事件
 void event_loop() {
     const int MAX_EVENTS = 64;
-    std::cout << "开始事件循环..." << std::endl;
+    std::cout << "Starting event loop..." << std::endl;
     
     #if defined(__linux__)
         // ... Linux 代码保持不变 ...
@@ -148,22 +148,22 @@ void event_loop() {
             
             // 检查是否收到停止信号
             if (!running) {
-                std::cout << "收到停止信号，退出事件循环" << std::endl;
+                std::cout << "Received stop signal, exiting event loop" << std::endl;
                 break;
             }
             
             if (n < 0) {
                 if (errno == EINTR) {
-                    std::cout << "kevent 被信号中断，检查运行状态" << std::endl;
+                    std::cout << "kevent interrupted by signal, checking running state" << std::endl;
                     continue;  // 被信号中断，继续检查运行状态
                 }
-                std::cerr << "kevent 错误: " << strerror(errno) << std::endl;
+                std::cerr << "kevent error: " << strerror(errno) << std::endl;
                 break;
             }
             
             // 处理实际事件
             if (n > 0) {
-                std::cout << "事件循环: 收到 " << n << " 个事件" << std::endl;
+                std::cout << "Event loop: received " << n << " events" << std::endl;
                 for(int i = 0; i < n; ++i) {
                     if(events[i].ident == server_fd) {
                         accept_connection();
@@ -175,7 +175,7 @@ void event_loop() {
         }
     #endif
     
-    std::cout << "正在关闭所有连接..." << std::endl;
+    std::cout << "Closing all connections..." << std::endl;
     
     // 关闭所有客户端连接
     for (const auto& client : clients) {
@@ -184,19 +184,19 @@ void event_loop() {
     
     // 关闭服务器套接字
     if (server_fd >= 0) {
-        std::cout << "关闭服务器套接字..." << std::endl;
+        std::cout << "Closing server socket..." << std::endl;
         close(server_fd);
         server_fd = -1;
     }
     
     // 关闭事件处理器
     if (event_fd >= 0) {
-        std::cout << "关闭事件处理器..." << std::endl;
+        std::cout << "Closing event handler..." << std::endl;
         close(event_fd);
         event_fd = -1;
     }
     
-    std::cout << "事件循环已退出" << std::endl;
+    std::cout << "Event loop has exited" << std::endl;
 }
   void add_to_epoll(int fd) {
 #if defined(__linux__)

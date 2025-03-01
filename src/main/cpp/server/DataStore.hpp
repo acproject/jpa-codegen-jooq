@@ -25,9 +25,9 @@ public:
 
     struct NumericValue {
         std::string key;  // 添加键名
-        float values[4];
+        std::vector<float> values;  // 改为动态数组
         bool valid = true;
-        NumericValue() : values{0}, valid(true) {}
+        NumericValue() : valid(true) {}
     };
 
     struct KeyMetadata {
@@ -78,8 +78,8 @@ public:
     std::string info() const;
     void pexpire(const std::string& key, long long milliseconds);
     long long pttl(const std::string& key);
-    bool saveRDB(const std::string& filename);
-    bool loadRDB(const std::string& filename);
+    bool saveMCDB(const std::string& filename);
+    bool loadMCDB(const std::string& filename);
     bool set_numeric(const std::string& key, const std::vector<float>& values);
     std::vector<float> get_numeric(const std::string& key) const;
     bool rename(const std::string& oldKey, const std::string& newKey);

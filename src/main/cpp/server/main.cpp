@@ -14,7 +14,7 @@ TcpServer* g_server = nullptr;
 std::atomic<bool> g_running(true);
 
 void signal_handler(int signum) {
-    std::cout << "\n接收到信号 " << signum << "，正在优雅关闭..." << std::endl;  
+    std::cout << "\nReceived signal " << signum << ", gracefully shutting down..." << std::endl;  
 
     g_running = false;  // 设置全局运行标志为 false
 
@@ -34,17 +34,17 @@ int main(int argc, char* argv[]) {
     CommandHandler handler(store);
 
 
-    std::string rdbFile = "dump.rdb";
-    std::ifstream testFile(rdbFile);
+    std::string mcdbFile = "dump.mcdb";
+    std::ifstream testFile(mcdbFile);
     if (testFile.good()) {
-        std::cout << "找到 RDB 文件，尝试加载..." << std::endl;
-        if (store.loadRDB(rdbFile)) {
-            std::cout << "成功加载 RDB 文件" << std::endl;
+        std::cout << "Found MCDB file, attempting to load..." << std::endl;
+        if (store.loadMCDB(mcdbFile)) {
+            std::cout << "Successfully loaded MCDB file" << std::endl;
         } else {
-            std::cout << "加载 RDB 文件失败，使用空数据库启动" << std::endl;
+            std::cout << "Failed to load MCDB file, starting with empty database" << std::endl;
         }
     } else {
-        std::cout << "RDB 文件不存在，使用空数据库启动" << std::endl;
+        std::cout << "MCDB file does not exist, starting with empty database" << std::endl;
     }
 
 
@@ -72,8 +72,8 @@ int main(int argc, char* argv[]) {
         };
     
 
-    std::cout << "MiniCache 服务器启动在端口 " << port << std::endl;
-    std::cout << "按 Ctrl+C 优雅退出" << std::endl;
+    std::cout << "MiniCache server started on port " << port << std::endl;
+    std::cout << "Press Ctrl+C to gracefully exit" << std::endl;
 
     // 创建一个后台线程定期清理过期键
       std::thread cleanup_thread([&store]() {
@@ -90,9 +90,9 @@ int main(int argc, char* argv[]) {
     server.start();
 
     // 在退出前保存数据
-    std::cout << "保存数据到 RDB 文件..." << std::endl;
-    store.saveRDB("dump.rdb");
+    std::cout << "Saving data to MCDB file..." << std::endl;
+    store.saveMCDB("dump.mcdb");
 
-    std::cout << "服务器已关闭" << std::endl;
+    std::cout << "Server has been shut down" << std::endl;
     return 0;
 }
