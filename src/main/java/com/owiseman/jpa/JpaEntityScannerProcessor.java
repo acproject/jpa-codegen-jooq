@@ -141,7 +141,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     private String getTableName(TypeElement typeElement) {
         Table tableAnnotation = typeElement.getAnnotation(Table.class);
-         // 修复点：明确处理注解不存在的情况
+        // 修复点：明确处理注解不存在的情况
         if (tableAnnotation == null || tableAnnotation.name().isEmpty()) {
             return convertClassNameToTableName(typeElement.getSimpleName().toString());
         }
@@ -182,7 +182,29 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                     "jsonb".equals(field.getAnnotation(Type.class).type())) {
                 typeName = "org.jooq.JSONB";
             }
+            ManyToOne manyToOne = field.getAnnotation(ManyToOne.class);
+            JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+            if (manyToOne != null && joinColumn != null) {
+                // 获取关联实体的类型
+                TypeMirror targetType = field.asType();
+                TypeElement targetElement = (TypeElement) typeUtils.asElement(targetType);
 
+                // 获取关联实体的主键类型
+                String primaryKeyType = getPrimaryKeyType(targetElement);
+
+                // 使用正确的数据类型
+                String sqlDataType = getSqlDataTypeForForeignKey(primaryKeyType);
+                boolean isNullable = joinColumn.nullable();
+
+                // 生成正确的字段定义
+                FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
+                                fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                        .initializer("DSL.field(" + "\"" + joinColumn.name() + "\"," + "\"" + joinColumn.name() + "\"," +
+                                sqlDataType + ".nullable(" + isNullable + "))")
+                        .build();
+                fieldSpecs.add(fieldSpec);
+                continue;
+            }
 
             String sqlDataType = getSqlDataType(typeName);
             String dataTypeWithLength = typeName.equals("java.lang.String") ?
@@ -197,6 +219,30 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             fieldSpecs.add(fieldSpec);
         }
         return fieldSpecs;
+    }
+
+    // 获取实体主键类型的辅助方法
+    private String getPrimaryKeyType(TypeElement typeElement) {
+        for (VariableElement field : ElementFilter.fieldsIn(typeElement.getEnclosedElements())) {
+            if (field.getAnnotation(Id.class) != null) {
+                return typeUtils.erasure(field.asType()).toString();
+            }
+        }
+        return "java.lang.String"; // 默认返回String类型
+    }
+
+    // 根据主键类型获取对应的SQL数据类型
+    private String getSqlDataTypeForForeignKey(String typeName) {
+        switch (typeName) {
+            case "java.lang.String":
+                return "SQLDataType.VARCHAR(128)"; // 假设UUID存储为字符串
+            case "java.lang.Long":
+                return "SQLDataType.BIGINT";
+            case "java.lang.Integer":
+                return "SQLDataType.INTEGER";
+            default:
+                return "SQLDataType.VARCHAR(255)";
+        }
     }
 
     private int getColumnLength(VariableElement field) {
