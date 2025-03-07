@@ -26,7 +26,6 @@ import javax.annotation.processing.SupportedSourceVersion;
 
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
@@ -41,6 +40,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.jooq.impl.SQLDataType;
 
 import javax.tools.FileObject;
 import javax.tools.JavaFileObject;
@@ -53,7 +53,7 @@ import java.lang.annotation.Annotation;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes({"javax.persistence.Entity", "jakarta.persistence.Entity"})
+@SupportedAnnotationTypes({"jakarta.persistence.Entity"})
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class JpaEntityScannerProcessor extends AbstractProcessor {
     private Elements elementUtils;
@@ -75,7 +75,8 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         Set<Class<? extends Annotation>> typeElements = new HashSet<>();
         // 在Set中添加需要去扫描的类型
         typeElements.add(jakarta.persistence.Entity.class);
-        typeElements.add(Entity.class);
+        // 去掉对javax.persistence包下的Entity注解
+//        typeElements.add(Entity.class);
 
         List<TypeElement> entityClasses = roundEnv.getElementsAnnotatedWithAny(typeElements)
                 .stream()
@@ -266,14 +267,22 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         }
 
         // 处理集合类型
-        if (typeName.startsWith("java.util.Map")
-                || typeName.startsWith("java.util.List")
-                || typeName.startsWith("java.util.Set")) {
+        if (typeName.contains("Map")
+                || typeName.contains("List")
+                || typeName.contains("Set")) {
             return "SQLDataType.JSONB";
         }
 
+//        if (typeName.contains("Map")
+//                || typeName.contains("List")
+//                || typeName.contains("Set")) {
+//            return "SQLDataType.JSONB" + ".asConvertedDataType(new com.owiseman.jpa.util.JsonMapBinding())";
+//        }
+
         return switch (typeName) {
             case "int", "java.lang.Integer" -> "SQLDataType.INTEGER";
+            case "float", "java.lang.Float" -> "SQLDataType.FLOAT";
+            case "double", "java.lang.Double" -> "SQLDataType.DOUBLE";
             case "long", "java.lang.Long" -> "SQLDataType.BIGINT";
             case "java.lang.String" -> "SQLDataType.VARCHAR";
             case "java.time.LocalDate" -> "SQLDataType.LOCALDATE";
@@ -289,6 +298,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
     // 添加导入
     private String injectImports(JavaFile javaFile, List<String> imports) {
+
         String rawSource = javaFile.toString();
 
         List<String> result = new ArrayList<>();

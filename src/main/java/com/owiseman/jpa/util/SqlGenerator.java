@@ -71,6 +71,8 @@ public class SqlGenerator implements MapToType {
                 yield switch (col.typeName()) {
                     case "int", "java.lang.Integer" -> "INTEGER";
                     case "long", "java.lang.Long" -> "BIGINT";
+                    case "float", "java.lang.Float" -> "FLOAT";        // 新增 float 类型
+                    case "double", "java.lang.Double" -> "DOUBLE PRECISION"; // 新增 double 类型
                     case "java.lang.String" -> {
                         int length = col.length();
                         yield "VARCHAR(" + (length > 0 ? length : 255) + ")";
