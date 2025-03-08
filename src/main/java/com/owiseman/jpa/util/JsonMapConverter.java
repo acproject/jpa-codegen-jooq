@@ -21,15 +21,18 @@ public class JsonMapConverter implements Converter<Object, Map<String, Object>> 
         }
 
         if (databaseObject instanceof List) {
-            return objectMapper.convertValue(databaseObject, new TypeReference<HashMap<String, Object>>() {});
+            return objectMapper.convertValue(databaseObject, new TypeReference<HashMap<String, Object>>() {
+            });
         }
-        
+
         try {
             if (databaseObject instanceof String) {
-                return objectMapper.readValue((String) databaseObject, new TypeReference<HashMap<String, Object>>() {});
+                return objectMapper.readValue((String) databaseObject, new TypeReference<HashMap<String, Object>>() {
+                });
             } else {
                 // PostgreSQL的JSONB类型可能会以PGobject形式返回
-                return objectMapper.readValue(databaseObject.toString(), new TypeReference<HashMap<String, Object>>() {});
+                return objectMapper.readValue(databaseObject.toString(), new TypeReference<HashMap<String, Object>>() {
+                });
             }
         } catch (IOException e) {
             throw new RuntimeException("Error converting database object to Map", e);
@@ -41,7 +44,7 @@ public class JsonMapConverter implements Converter<Object, Map<String, Object>> 
         if (userObject == null) {
             return null;
         }
-        
+
         try {
             if (userObject instanceof List<?>) {
                 return objectMapper.writeValueAsString(userObject);
@@ -63,4 +66,16 @@ public class JsonMapConverter implements Converter<Object, Map<String, Object>> 
         Class<Map<String, Object>> result = (Class<Map<String, Object>>) (Class<?>) Map.class;
         return result;
     }
+
+    public static String MapToJsonString(Map<String, ?> map) {
+        String jsonString = "";
+        try {
+            jsonString = objectMapper.writeValueAsString(map); // 将HashMap转为JSON字符串
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+        return jsonString;
+    }
+
+
 }
