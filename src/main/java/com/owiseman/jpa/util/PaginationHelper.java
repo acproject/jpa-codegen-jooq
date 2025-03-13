@@ -19,7 +19,10 @@ public class PaginationHelper {
      */
     public static int getTotalPages(DSLContext dslContext, Condition condition,
                                     String tableName, int pageSize) {
-        Condition Con = DSL.noCondition();
+
+        if (pageSize <= 0) {
+            pageSize = 1;
+        }
         int totalRecords = dslContext
                 .selectCount()
                 .from(DSL.table(tableName))
@@ -37,7 +40,12 @@ public class PaginationHelper {
                                                Class<T> recordClass) {
         // 处理空条件
         Condition finalCondition = condition != null ? condition : DSL.noCondition();
-
+        if (pageSize <= 0) {
+            pageSize = 1;
+        }
+        if (pageNumber <= 0) {
+            pageNumber = 1;
+        }
         return dslContext
                 .select()
                 .from(DSL.table(tableName))
@@ -54,6 +62,12 @@ public class PaginationHelper {
                                               int pageNumber,
                                               Class<T> entityClass,
                                               SortField<?>... sortFields) { // 新增排序参数
+        if (pageSize <= 0) {
+            pageSize = 1;
+        }
+        if (pageNumber <= 0) {
+            pageNumber = 1;
+        }
         return dsl.selectFrom(DSL.table(tableName))
             .where(condition)
             .orderBy(sortFields) // 应用排序
