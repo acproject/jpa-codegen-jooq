@@ -3,6 +3,7 @@ package com.owiseman.jpa.util;
 import com.owiseman.jpa.model.ColumnMeta;
 import com.owiseman.jpa.model.DataSourceEnum;
 import com.owiseman.jpa.model.TableMeta;
+import org.jooq.impl.SQLDataType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,7 +43,7 @@ public class SqlGenerator implements MapToType {
 
         // 添加索引和外键
         table.indexes().forEach(idx ->
-                sb.append("CREATE INDEX ").append(idx.name()).append(" ON ")
+                sb.append("CREATE INDEX ").append("IF NOT EXISTS ").append(idx.name()).append(" ON ")
                         .append(table.name()).append(" (").append(String.join(", ", idx.columns())).append(");\n")
         );
 
@@ -84,6 +85,8 @@ public class SqlGenerator implements MapToType {
                     case "org.jooq.JSONB" -> "JSONB";
                     case "java.lang.Boolean" -> "BOOLEAN";
                     case "org.jooq.JSON" -> "JSON";
+                    case "java.math.BigDecimal" -> "DECIMAL";
+                    case "Numeric" -> "NUMERIC";
                     default -> "VARCHAR(255)";
                 };
             }

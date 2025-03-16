@@ -280,6 +280,8 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 //        }
 
         return switch (typeName) {
+            case "Numeric" -> "SQLDataType.NUMERIC";
+            case "java.math.BigDecimal","BigDecimal" -> "SQLDataType.DECIMAL";
             case "int", "java.lang.Integer" -> "SQLDataType.INTEGER";
             case "float", "java.lang.Float" -> "SQLDataType.FLOAT";
             case "double", "java.lang.Double" -> "SQLDataType.DOUBLE";
