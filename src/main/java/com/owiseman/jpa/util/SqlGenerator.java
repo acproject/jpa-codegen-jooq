@@ -34,7 +34,6 @@ public class SqlGenerator implements MapToType {
                 return; // 跳过这个字段
             }
 
-
             String typeDef = mapToType(col, dataSourceEnum.POSTGRESQL);
             // 添加唯一约束
             String uniqueConstraint = col.unique() ? " UNIQUE" : "";
@@ -61,9 +60,8 @@ public class SqlGenerator implements MapToType {
                         .append(table.name()).append(" (").append(String.join(", ", idx.columns())).append(");\n")
         );
 
-        // 处理外键约束
+        // 处理外键约束 - 只处理明确定义的外键
         table.foreignKeys().forEach(fk -> {
-
                     sb.append("ALTER TABLE ").append(table.name())
                             .append(" ADD CONSTRAINT ").append(fk.name())
                             .append(" FOREIGN KEY (").append(fk.column())
@@ -71,7 +69,10 @@ public class SqlGenerator implements MapToType {
                             .append(" (").append(fk.refColumn()).append(");\n");
                 }
         );
-        // 处理一对多关系的外键（保留这部分，但修改逻辑）
+        
+        // 移除自动为_id字段创建外键的逻辑
+        // 下面这段代码被注释掉或删除
+        /*
         table.columns().stream()
                 .filter(col -> {
                     // 只处理真正的外键字段，不处理集合字段
@@ -88,7 +89,7 @@ public class SqlGenerator implements MapToType {
                                 .append("(id);\n");
                     }
                 });
-
+        */
 
         return sb.toString();
     }
