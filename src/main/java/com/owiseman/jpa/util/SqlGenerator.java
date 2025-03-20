@@ -17,12 +17,24 @@ public class SqlGenerator implements MapToType {
         ddlStatements.add(buildCreateTableStatement(table, dataSourceEnum));
     }
 
+    private boolean isTableExists(String tableName) {
+        return ddlStatements.stream().anyMatch(s -> s.contains("CREATE TABLE " + tableName));
+    }
+
     private String buildCreateTableStatement(TableMeta table, DataSourceEnum dataSourceEnum) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE TABLE IF NOT EXISTS ").append(table.name()).append(" (\n");
 
         // 处理字段定义
         table.columns().forEach(col -> {
+            // 跳过多对多关系中错误添加的集合字段（只针对多对多关系的集合字段）
+            if (isCollectionOrMapType(col.typeName()) &&
+                    (col.typeName().contains("List<") || col.typeName().contains("Set<")) &&
+                    !col.name().endsWith("_id")) { // 保留真正的外键字段
+                return; // 跳过这个字段
+            }
+
+
             String typeDef = mapToType(col, dataSourceEnum.POSTGRESQL);
             // 添加唯一约束
             String uniqueConstraint = col.unique() ? " UNIQUE" : "";
@@ -49,27 +61,34 @@ public class SqlGenerator implements MapToType {
                         .append(table.name()).append(" (").append(String.join(", ", idx.columns())).append(");\n")
         );
 
-        table.foreignKeys().forEach(fk ->
-                sb.append("ALTER TABLE ").append(table.name())
-                        .append(" ADD CONSTRAINT ").append(fk.name())
-                        .append(" FOREIGN KEY (").append(fk.column())
-                        .append(") REFERENCES ").append(fk.refTable())
-                        .append(" (").append(fk.refColumn()).append(");\n")
-        );
-
-        // 新增外键约束生成（自动处理一对多关系）
-        table.columns().stream()
-                .filter(col -> col.typeName().contains("List<") || col.typeName().contains("Set<"))
-                .forEach(col -> {
-                    String fullTypeName = col.typeName().replaceAll(".*<([^>]+)>.*", "$1");
-                    String simpleClassName = fullTypeName.replaceAll(".*\\.", "");
-                    String refTable = convertClassNameToTableName(simpleClassName);
+        // 处理外键约束
+        table.foreignKeys().forEach(fk -> {
 
                     sb.append("ALTER TABLE ").append(table.name())
-                            .append(" ADD FOREIGN KEY (").append(col.name())
-                            .append(") REFERENCES ").append(refTable)
-                            .append("(id);\n");
+                            .append(" ADD CONSTRAINT ").append(fk.name())
+                            .append(" FOREIGN KEY (").append(fk.column())
+                            .append(") REFERENCES ").append(fk.refTable())
+                            .append(" (").append(fk.refColumn()).append(");\n");
+                }
+        );
+        // 处理一对多关系的外键（保留这部分，但修改逻辑）
+        table.columns().stream()
+                .filter(col -> {
+                    // 只处理真正的外键字段，不处理集合字段
+                    return col.name().endsWith("_id") && !isCollectionOrMapType(col.typeName());
+                })
+                .forEach(col -> {
+                    // 只有当这个外键没有被明确定义时才添加
+                    if (table.foreignKeys().stream().noneMatch(fk -> fk.column().equals(col.name()))) {
+                        String refTable = col.name().substring(0, col.name().length() - 3); // 移除"_id"
+                        sb.append("ALTER TABLE ").append(table.name())
+                                .append(" ADD CONSTRAINT fk_").append(table.name()).append("_").append(col.name())
+                                .append(" FOREIGN KEY (").append(col.name())
+                                .append(") REFERENCES ").append(refTable)
+                                .append("(id);\n");
+                    }
                 });
+
 
         return sb.toString();
     }

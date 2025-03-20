@@ -1312,4 +1312,22 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
         return constraint;
     }
+
+    /**
+     * 创建删除表的JSON定义
+     *
+     * @param tableName 要删除的表名
+     * @return 删除表的JSON定义
+     */
+    public JsonNode createDropTableJson(String tableName) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        try {
+            // 创建一个包含表名的简单JSON对象
+            return objectMapper.createObjectNode()
+                    .put("operation", "DROP")
+                    .put("table", tableName);
+        } catch (Exception e) {
+            throw new RuntimeException("创建删除表JSON定义失败: " + e.getMessage(), e);
+        }
+    }
 }
