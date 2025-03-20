@@ -7,6 +7,7 @@ public record TableMeta(
         List<ColumnMeta> columns,
         List<String> primaryKey,
         List<Index> indexes,
-        List<ForeignKey> foreignKeys
+        List<ForeignKey> foreignKeys,
+        boolean generateJooq
 ) {
 }

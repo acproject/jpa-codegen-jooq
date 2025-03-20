@@ -8,6 +8,8 @@ import org.jooq.impl.SQLDataType;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.owiseman.jpa.JpaEntityScannerProcessor.convertClassNameToTableName;
+
 public class SqlGenerator implements MapToType {
     private final List<String> ddlStatements = new ArrayList<>();
 
@@ -55,8 +57,23 @@ public class SqlGenerator implements MapToType {
                         .append(" (").append(fk.refColumn()).append(");\n")
         );
 
+        // 新增外键约束生成（自动处理一对多关系）
+        table.columns().stream()
+                .filter(col -> col.typeName().contains("List<") || col.typeName().contains("Set<"))
+                .forEach(col -> {
+                    String fullTypeName = col.typeName().replaceAll(".*<([^>]+)>.*", "$1");
+                    String simpleClassName = fullTypeName.replaceAll(".*\\.", "");
+                    String refTable = convertClassNameToTableName(simpleClassName);
+
+                    sb.append("ALTER TABLE ").append(table.name())
+                            .append(" ADD FOREIGN KEY (").append(col.name())
+                            .append(") REFERENCES ").append(refTable)
+                            .append("(id);\n");
+                });
+
         return sb.toString();
     }
+
 
     @Override
     public String mapToType(ColumnMeta col, DataSourceEnum dataSourceEnum) {
@@ -74,6 +91,7 @@ public class SqlGenerator implements MapToType {
                     case "long", "java.lang.Long" -> "BIGINT";
                     case "float", "java.lang.Float" -> "FLOAT";        // 新增 float 类型
                     case "double", "java.lang.Double" -> "DOUBLE PRECISION"; // 新增 double 类型
+                    case "java.util.UUID" -> "VARCHAR(255)";
                     case "java.lang.String" -> {
                         int length = col.length();
                         yield "VARCHAR(" + (length > 0 ? length : 255) + ")";
@@ -112,8 +130,11 @@ public class SqlGenerator implements MapToType {
     }
 
     private boolean isCollectionOrMapType(String typeName) {
-        return typeName.startsWith("java.util.Map")
-                || typeName.startsWith("java.util.List")
-                || typeName.startsWith("java.util.Set");
+        // 排除包含关联关系的类型
+        return (typeName.startsWith("java.util.Map") ||
+                typeName.startsWith("java.util.List") ||
+                typeName.startsWith("java.util.Set")) &&
+                // 添加排除条件：如果泛型参数是实体类则不视为普通集合
+                !typeName.matches(".*<.*[A-Z][a-zA-Z]+>.*");
     }
 }

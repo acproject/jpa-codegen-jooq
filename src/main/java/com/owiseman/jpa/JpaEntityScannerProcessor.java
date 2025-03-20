@@ -15,6 +15,14 @@ import com.squareup.javapoet.JavaFile;
 import com.squareup.javapoet.MethodSpec;
 import com.squareup.javapoet.TypeSpec;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Table;
 import org.hibernate.annotations.Type;
 
 
@@ -29,18 +37,12 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
+import javax.lang.model.util.SimpleTypeVisitor8;
 import javax.lang.model.util.Types;
-
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.Table;
-import org.jooq.impl.SQLDataType;
 
 import javax.tools.FileObject;
 import javax.tools.JavaFileObject;
@@ -95,6 +97,12 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
     }
 
     private void generateCode(List<TypeElement> entityClasses) throws ClassNotFoundException {
+        List<TableMeta> joinTables = new ArrayList<>();
+        // 收集所有中间表元数据
+        for (TypeElement entity : entityClasses) {
+            joinTables.addAll(parseJoinTables(entity));
+        }
+
         assert !entityClasses.isEmpty();
         String packageName = elementUtils.getPackageOf(entityClasses.getFirst()).toString();
 
@@ -119,6 +127,16 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             tableClass = tableClass.toBuilder().addType(tableInnerClass).build();
         }
 
+        // 新增中间表处理
+        for (TableMeta joinTable : joinTables) {
+            TypeSpec joinTableClass = TypeSpec.classBuilder(joinTable.name().toUpperCase())
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                    .addField(getTableFieldSpec(joinTable.name()))
+                    .addFields(getJoinTableFields(joinTable))
+                    .build();
+            tableClass = tableClass.toBuilder().addType(joinTableClass).build();
+        }
+
         JavaFile javaFile = JavaFile.builder(packageName, tableClass)
                 .build();
 
@@ -138,6 +156,28 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             e.printStackTrace();
         }
 
+    }
+
+    private List<FieldSpec> getJoinTableFields(TableMeta joinTable) {
+        List<FieldSpec> fields = new ArrayList<>();
+
+        // 生成外键字段
+        joinTable.columns().forEach(col -> {
+            String type = switch (col.typeName()) {
+                case "java.lang.String" -> "SQLDataType.VARCHAR";
+                case "java.util.UUID" -> "SQLDataType.UUID";
+                default -> "SQLDataType.VARCHAR";
+            };
+
+            FieldSpec field = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
+                            col.name().toUpperCase(),
+                            Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                    .initializer("DSL.field(\"" + col.name() + "\", " + type + ")")
+                    .build();
+            fields.add(field);
+        });
+
+        return fields;
     }
 
     private String getTableName(TypeElement typeElement) {
@@ -166,11 +206,62 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 .initializer("DSL.table(\"" + tableName + "\")").build();
     }
 
+    private String getPrimaryKeyColumn(TypeElement entity) {
+        for (VariableElement field : ElementFilter.fieldsIn(entity.getEnclosedElements())) {
+            if (field.getAnnotation(Id.class) != null) {
+                return getColumnName(field);
+            }
+        }
+        return "id"; // 默认主键列名
+    }
+
+    private String getJoinColumnName(VariableElement field) {
+        // 检查是否有显式的@JoinColumn注解
+        JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+        if (joinColumn != null && !joinColumn.name().isEmpty()) {
+            return joinColumn.name();
+        }
+
+        // 自动生成外键列名：字段名
+        return convertFieldNameToColumnName(field.getSimpleName().toString());
+    }
+
+    private void processOneToManyField(VariableElement field, List<FieldSpec> fieldSpecs) {
+        // 获取当前字段对应的外键列名（通过@JoinColumn或自动生成）
+        String fkColumnName = getJoinColumnName(field);
+
+
+        // 获取关联实体类型
+        TypeMirror typeMirror = ((DeclaredType) field.asType()).getTypeArguments().get(0);
+        TypeElement targetEntity = (TypeElement) typeUtils.asElement(typeMirror);
+        String pkType = getPrimaryKeyType(targetEntity);
+
+        // 生成外键字段定义
+        String sqlDataType = getSqlDataTypeForForeignKey(pkType);
+        FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
+                        field.getSimpleName().toString().toUpperCase(),
+                        Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                .initializer("DSL.field(\"" + fkColumnName + "\", " + sqlDataType + ")")
+                .build();
+        fieldSpecs.add(fieldSpec);
+    }
+
     private List<FieldSpec> getFieldSpecs(TypeElement typeElement) {
         List<FieldSpec> fieldSpecs = new ArrayList<>();
         List<VariableElement> fields = ElementFilter.fieldsIn(typeElement.getEnclosedElements());
 
         for (var field : fields) {
+
+            // 跳过关联关系字段（由外键处理逻辑生成）
+//            if (isRelationshipField(field)) {
+//                continue;
+//            }
+
+            // 优先处理关联关系字段
+            if (field.getAnnotation(OneToMany.class) != null) {
+                processOneToManyField(field, fieldSpecs);
+                continue;
+            }
             String fieldName = field.getSimpleName().toString();
             Column columnAnnotation = field.getAnnotation(Column.class);
             String columnName = (columnAnnotation != null && !columnAnnotation.name().isEmpty())
@@ -207,7 +298,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 continue;
             }
 
-            String sqlDataType = getSqlDataType(typeName);
+            String sqlDataType = getSqlDataType(typeName, field);
             String dataTypeWithLength = typeName.equals("java.lang.String") ?
                     sqlDataType + ".length(" + getColumnLength(field) + ")" : sqlDataType;
 
@@ -218,9 +309,16 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                             ".nullable(" + isNullable(field) + "))")
                     .build();
             fieldSpecs.add(fieldSpec);
+
         }
         return fieldSpecs;
     }
+
+//    private boolean isRelationshipField(VariableElement field) {
+//        return field.getAnnotation(OneToMany.class) != null ||
+//                field.getAnnotation(ManyToOne.class) != null ||
+//                field.getAnnotation(ManyToMany.class) != null;
+//    }
 
     // 获取实体主键类型的辅助方法
     private String getPrimaryKeyType(TypeElement typeElement) {
@@ -236,7 +334,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
     private String getSqlDataTypeForForeignKey(String typeName) {
         switch (typeName) {
             case "java.lang.String":
-                return "SQLDataType.VARCHAR(128)"; // 假设UUID存储为字符串
+                return "SQLDataType.VARCHAR(255)"; // 假设UUID存储为字符串
             case "java.lang.Long":
                 return "SQLDataType.BIGINT";
             case "java.lang.Integer":
@@ -251,7 +349,13 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         if (columnAnnotation != null && columnAnnotation.length() > 0) {
             return columnAnnotation.length();
         }
-        return 255; // default 255
+        // 默认根据主键类型设置合理长度
+        String typeName = field.asType().toString();
+        return switch (typeName) {
+            case "java.util.String" -> 255;
+            case "java.lang.Long", "long" -> 30;
+            default -> 255;
+        };
     }
 
     private boolean isNullable(VariableElement field) {
@@ -260,7 +364,26 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         return true;
     }
 
-    private String getSqlDataType(String typeName) {
+    private String getSqlDataTypeForOneToMany(VariableElement field) {
+        // 获取关联实体类型
+        TypeMirror typeMirror = field.asType();
+        TypeElement targetEntity = (TypeElement) ((DeclaredType) typeMirror).getTypeArguments().get(0).accept(new SimpleTypeVisitor8<TypeElement, Void>() {
+            @Override
+            public TypeElement visitDeclared(DeclaredType t, Void p) {
+                return (TypeElement) t.asElement();
+            }
+        }, null);
+
+        // 获取关联实体主键类型
+        String pkType = getPrimaryKeyType(targetEntity);
+        return getSqlDataTypeForForeignKey(pkType);
+    }
+
+    private String getSqlDataType(String typeName, VariableElement field) {
+        // 优先处理关联关系
+        if (field.getAnnotation(OneToMany.class) != null) {
+            return getSqlDataTypeForOneToMany(field);
+        }
         // 处理枚举类型
         if (typeName.endsWith("Enum") || typeName.contains(".enums.")) {
             return "SQLDataType.VARCHAR";
@@ -281,7 +404,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
         return switch (typeName) {
             case "Numeric" -> "SQLDataType.NUMERIC";
-            case "java.math.BigDecimal","BigDecimal" -> "SQLDataType.DECIMAL";
+            case "java.math.BigDecimal", "BigDecimal" -> "SQLDataType.DECIMAL";
             case "int", "java.lang.Integer" -> "SQLDataType.INTEGER";
             case "float", "java.lang.Float" -> "SQLDataType.FLOAT";
             case "double", "java.lang.Double" -> "SQLDataType.DOUBLE";
@@ -319,25 +442,30 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
 
     // 我们遵循默认的驼峰命名法到下划线分隔的小写形式的转换
-    private static String convertClassNameToTableName(String className) {
+    public static String convertClassNameToTableName(String className) {
         if (className == null || className.isEmpty()) {
             return className;
         }
         StringBuilder result = new StringBuilder();
         char[] chars = className.toCharArray();
+
         for (int i = 0; i < chars.length; i++) {
-            char ch = chars[i];
-            if (Character.isUpperCase(ch)) {
-                if (i > 0) result.append("_");
-                result.append(Character.toLowerCase(ch));
-            } else {
-                result.append(ch);
+            char currentChar = chars[i];
+            // 处理连续大写字母（如"ColumnABC"转成column_abc）
+            if (i > 0 && Character.isUpperCase(currentChar)) {
+                char prevChar = chars[i - 1];
+                if (Character.isLowerCase(prevChar) ||
+                        (i < chars.length - 1 && Character.isLowerCase(chars[i + 1]))) {
+                    result.append('_');
+                }
             }
+            result.append(Character.toLowerCase(currentChar));
         }
-        return result.toString().toLowerCase();
+
+        return result.toString();
     }
 
-    private TableMeta parseEntity(TypeElement element) {
+    private TableMeta parseEntity(TypeElement element, SqlGenerator sqlGen) {
         var tableAnnotation = AnnotationUtils.getAnnotation(element, Table.class);
 
 
@@ -372,8 +500,76 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
         // 解析外键
         List<ForeignKey> foreignKeys = parseForeignKeys(element);
+        // 处理ManyToMany关联表
+        List<TableMeta> joinTables = parseJoinTables(element);
+        joinTables.forEach(joinTable -> sqlGen.addTable(joinTable, DataSourceEnum.POSTGRESQL));
 
-        return new TableMeta(tableName, columns, primaryKey, indexes, foreignKeys);
+        return new TableMeta(tableName, columns, primaryKey, indexes, foreignKeys, true);
+    }
+
+    private List<TableMeta> parseJoinTables(TypeElement entity) {
+        List<TableMeta> joinTables = new ArrayList<>();
+
+        ElementFilter.fieldsIn(entity.getEnclosedElements()).stream()
+                .filter(f -> f.getAnnotation(ManyToMany.class) != null)
+                .forEach(field -> {
+                    JoinTable joinTable = field.getAnnotation(JoinTable.class);
+                    if (joinTable != null) {
+                        // 获取当前实体主键类型
+                        String sourceType = getPrimaryKeyType(entity);
+
+                        // 获取关联实体主键类型
+                        TypeMirror targetTypeMirror = field.asType();
+                        TypeElement targetEntity = (TypeElement) typeUtils.asElement(targetTypeMirror);
+                        String targetType = getPrimaryKeyType(targetEntity);
+
+                        // 构建关联表元数据
+                        TableMeta joinTableMeta = new TableMeta(
+                                joinTable.name(),
+                                List.of(
+                                        new ColumnMeta(
+                                                joinTable.joinColumns()[0].name(),
+                                                sourceType, // 使用当前实体主键类型
+                                                getColumnLength(field),
+                                                false,
+                                                false
+                                        ),
+                                        new ColumnMeta(
+                                                joinTable.inverseJoinColumns()[0].name(),
+                                                targetType, // 使用关联实体主键类型
+                                                getColumnLength(field),
+                                                false,
+                                                false
+                                        )
+                                ),
+                                List.of(
+                                        // 联合主键
+                                        joinTable.joinColumns()[0].name(),
+                                        joinTable.inverseJoinColumns()[0].name()
+                                ),
+                                List.of(), // 索引
+                                List.of(
+                                        // 外键
+                                        new ForeignKey(
+                                                "fk_" + joinTable.name() + "_source",
+                                                joinTable.joinColumns()[0].name(),
+                                                getTableName(entity),
+                                                "id"
+                                        ),
+                                        new ForeignKey(
+                                                "fk_" + joinTable.name() + "_target",
+                                                joinTable.inverseJoinColumns()[0].name(),
+                                                getReferencedTableName(field.asType()),
+                                                "id"
+                                        )
+                                ),
+                                true
+
+                        );
+                        joinTables.add(joinTableMeta);
+                    }
+                });
+        return joinTables;
     }
 
     private List<ForeignKey> parseForeignKeys(TypeElement entity) {
@@ -407,6 +603,21 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                     ));
                 });
 
+        // 处理单向 OneToMany（需要 JoinColumn）
+        ElementFilter.fieldsIn(entity.getEnclosedElements()).stream()
+                .filter(f -> f.getAnnotation(OneToMany.class) != null)
+                .forEach(field -> {
+                    JoinColumn joinColumn = field.getAnnotation(JoinColumn.class);
+                    if (joinColumn != null) {
+                        foreignKeys.add(new ForeignKey(
+                                generateFkName(getTableName(entity), joinColumn.name()),
+                                joinColumn.name(),
+                                getReferencedTableName(field.asType()),
+                                joinColumn.referencedColumnName()
+                        ));
+                    }
+                });
+
         return foreignKeys;
     }
 
@@ -415,7 +626,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         SqlGenerator sqlGen = new SqlGenerator();
 
         for (TypeElement entity : entityClasses) {
-            TableMeta table = parseEntity(entity);
+            TableMeta table = parseEntity(entity, sqlGen);
             sqlGen.addTable(table, DataSourceEnum.POSTGRESQL);
         }
 
