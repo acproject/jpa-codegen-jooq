@@ -300,19 +300,24 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             }
 
             String sqlDataType = getSqlDataType(typeName, field);
-            String dataTypeWithLength = typeName.equals("java.lang.String")
-                    ? sqlDataType + ".length(" + getColumnLength(field) + ")"
-                    : sqlDataType;
+            String dataTypeWithLength;
+            
+            // 对于JSONB和JSON类型，不应用长度限制
+            if (sqlDataType.contains("JSONB") || sqlDataType.contains("JSON")) {
+                dataTypeWithLength = sqlDataType;
+            } else if (typeName.equals("java.lang.String")) {
+                dataTypeWithLength = sqlDataType + ".length(" + getColumnLength(field) + ")";
+            } else {
+                dataTypeWithLength = sqlDataType;
+            }
 
             FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
                     fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-
                     .initializer(
                             "DSL.field(" + "\"" + columnName + "\"," + "\"" + columnName + "\"," + dataTypeWithLength +
                                     ".nullable(" + isNullable(field) + "))")
                     .build();
             fieldSpecs.add(fieldSpec);
-
         }
         return fieldSpecs;
     }
@@ -383,6 +388,22 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         if (field.getAnnotation(OneToMany.class) != null) {
             return getSqlDataTypeForOneToMany(field);
         }
+        
+        // 检查Column注解的columnDefinition属性
+        Column columnAnnotation = field.getAnnotation(Column.class);
+        if (columnAnnotation != null && !columnAnnotation.columnDefinition().isEmpty()) {
+            String columnDef = columnAnnotation.columnDefinition().toUpperCase();
+            if (columnDef.contains("JSON") && !columnDef.contains("JSONB")) {
+                return "SQLDataType.JSON";
+            } else if (columnDef.contains("JSONB")) {
+                return "SQLDataType.JSONB";
+            } else if (columnDef.contains("TEXT")) {
+                return "SQLDataType.CLOB";
+            }
+            // 其他自定义类型默认为VARCHAR
+            return "SQLDataType.VARCHAR";
+        }
+        
         // 处理枚举类型
         if (typeName.endsWith("Enum") || typeName.contains(".enums.")) {
             return "SQLDataType.VARCHAR";
@@ -484,9 +505,26 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 .filter(field -> !excludedFields.contains(field)) // 过滤掉多对多关系和一对多关系
                 .map(field -> {
                     Column column = field.getAnnotation(Column.class);
+                    String typeName = field.asType().toString();
+                    
+                    // 检查是否为JSONB或JSON类型
+                    if (column != null && column.columnDefinition() != null) {
+                        String columnDef = column.columnDefinition().toUpperCase();
+                        if (columnDef.contains("JSONB")) {
+                            typeName = "org.jooq.JSONB";
+                        } else if (columnDef.contains("JSON")) {
+                            typeName = "org.jooq.JSON";
+                        }
+                    }
+                    
+                    // 检查集合类型
+                    if (typeName.contains("List") || typeName.contains("Set") || typeName.contains("Map")) {
+                        typeName = "org.jooq.JSONB";
+                    }
+                    
                     return new ColumnMeta(
                             getColumnName(field),
-                            field.asType().toString(),
+                            typeName,
                             column != null ? column.length() : 255,
                             column == null || column.nullable(),
                             column != null && column.unique());

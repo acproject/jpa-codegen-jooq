@@ -97,6 +97,20 @@ public class SqlGenerator implements MapToType {
 
     @Override
     public String mapToType(ColumnMeta col, DataSourceEnum dataSourceEnum) {
+        // 首先检查是否有columnDefinition属性（我们需要在ColumnMeta中添加这个属性）
+        if (col.hasColumnDefinition()) {
+            String columnDef = col.columnDefinition().toUpperCase();
+            if (columnDef.contains("JSON") && !columnDef.contains("JSONB")) {
+                return "JSON" + (col.nullable() ? "" : " NOT NULL");
+            } else if (columnDef.contains("JSONB")) {
+                return "JSONB" + (col.nullable() ? "" : " NOT NULL");
+            } else if (columnDef.contains("TEXT")) {
+                return "TEXT" + (col.nullable() ? "" : " NOT NULL");
+            }
+            // 对于其他自定义类型，直接使用columnDefinition的值
+            return columnDef + (col.nullable() ? "" : " NOT NULL");
+        }
+        
         String baseType = switch (dataSourceEnum) {
             case POSTGRESQL -> {
                 if (isEnumType(col.typeName())) {
