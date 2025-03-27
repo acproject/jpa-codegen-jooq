@@ -327,7 +327,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     @Override
     public DataRecord dropTable(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
-        dslContext.dropDatabaseIfExists(tableName).execute();
+        dslContext.execute("DROP TABLE IF EXISTS " + tableName);
         log.info("Drop table: " + tableName);
         return new DataRecord("drop table", tableName, null, null);
     }
