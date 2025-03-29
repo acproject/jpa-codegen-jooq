@@ -14,7 +14,8 @@
 #include <iostream>
 #include <algorithm> // 添加 algorithm 头文件，包含 std::min 函数
 #include <ctime>     // 添加 time 函数的头文件
-
+#include <cstring>   // 添加 cstring 头文件，包含 strerror 函数
+#include <cerrno>    // 添加 cerrno 头文件，包含 errno 变量
 
 
 DataStore::~DataStore() {
