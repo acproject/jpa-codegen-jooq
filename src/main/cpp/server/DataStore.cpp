@@ -1,5 +1,20 @@
+// 在文件开头添加条件编译
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <windows.h>
+    // Windows 特有的定义
+    #define timegm _mkgmtime
+#else
+    #include <arpa/inet.h>
+    #include <sys/time.h>
+    // 其他 UNIX/Linux 特有的头文件
+#endif
 #include "DataStore.hpp"
 #include <iostream>
+#include <algorithm> // 添加 algorithm 头文件，包含 std::min 函数
+#include <ctime>     // 添加 time 函数的头文件
+
 
 
 DataStore::~DataStore() {
@@ -14,7 +29,8 @@ DataStore::~DataStore() {
 }
 
 DataStore::DataStore(size_t max_dbs) : current_db(0), changeCount(0) {
-    max_databases = std::min(max_dbs, ABSOLUTE_MAX_DBS);
+    // 修复 std::min 调用，明确指定模板参数类型
+    max_databases = std::min<size_t>(max_dbs, ABSOLUTE_MAX_DBS);
     databases.resize(DEFAULT_MAX_DBS);  // 初始只分配默认数量
 }
 
@@ -618,7 +634,8 @@ long long DataStore::pttl(const std::string &key) {
                      now.time_since_epoch())
                      .count();
   std::cout << "Calculating remaining time..." << current << std::endl;
-  return std::max(0LL, it->second.expireTime - current);
+  // 修复语法错误，确保表达式正确
+  return std::max<long long>(0, it->second.expireTime - current);
 }
 
 bool DataStore::watch(const std::string &key) {

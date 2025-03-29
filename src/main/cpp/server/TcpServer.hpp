@@ -73,7 +73,31 @@ public:
     void start();
     void stop();
 
+// 在适当的位置添加以下内容
+
+#ifdef PLATFORM_WINDOWS
+#include "windows/unix_compat.h"
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <mutex>
+#include <unordered_map>
+
 private:
+    // Windows 平台特定的成员
+    SOCKET server_fd;
+    HANDLE iocp_handle;
+    std::unordered_map<SOCKET, ClientState*> clients;
+    std::mutex clients_mutex;
+    bool running;
+    std::string host;
+    int port;
+
+    // Windows 平台特定的方法
+    bool setup_server_windows();
+    void handle_client_windows();
+#endif
+
     void setup_server() {
         std::cout << "Setting up server..." << std::endl;
         // 创建socket

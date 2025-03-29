@@ -1,14 +1,55 @@
-#include <arpa/inet.h>
+// 添加条件编译
+#ifdef _WIN32
+    #include <winsock2.h>  // 必须放在最前面
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "Ws2_32.lib")
+    // 不要在这里定义 closesocket 宏
+#else
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
+    #define closesocket close
+#endif
+
 #include <cstring>
 #include <iostream>
-#include <netinet/in.h>
-#include <readline/history.h>
-#include <readline/readline.h>
+#include <string> // 添加 string 头文件
+
+#ifdef _WIN32
+    // Windows 平台下使用简单的控制台输入输出替代 readline
+    #include <conio.h>
+    #include <windows.h>
+    // readline 函数的简单实现
+    char* readline(const char* prompt) {
+        std::cout << prompt;
+        std::string line;
+        std::getline(std::cin, line);
+        char* result = (char*)malloc(line.length() + 1);
+        if (result) {
+            strcpy(result, line.c_str());
+        }
+        return result;
+    }
+    // 历史记录相关函数的空实现
+    void add_history(const char* line) {}
+    void using_history() {}
+    void clear_history() {}
+#else
+    #include <readline/history.h>
+    #include <readline/readline.h>
+#endif
+
 #include <signal.h>
 #include <sstream>
-#include <string>
-#include <sys/socket.h>
-#include <unistd.h>
+#ifdef _WIN32
+    // Windows 平台下的 socket 相关定义
+    // 删除这里的 close 宏定义，避免与 closesocket 冲突
+    typedef int ssize_t;
+#else
+    #include <sys/socket.h>
+    #include <unistd.h>
+#endif
 #include <vector>
 
 #include "RespParser.hpp"
@@ -36,14 +77,14 @@ public:
 
     if (inet_pton(AF_INET, host.c_str(), &server_addr.sin_addr) <= 0) {
       std::cerr << "Invalid address: " << host << std::endl;
-      close(socket_fd);
+      closeSocket(socket_fd); // 修改为使用 closeSocket 函数
       return false;
     }
 
     if (::connect(socket_fd, (struct sockaddr *)&server_addr,
                   sizeof(server_addr)) < 0) {
       std::cerr << "Connection failed to " << host << ":" << port << std::endl;
-      close(socket_fd);
+      closeSocket(socket_fd); // 修改为使用 closeSocket 函数
       return false;
     }
 
@@ -64,7 +105,7 @@ public:
 
     // 先确保断开旧连接
     if (socket_fd >= 0) {
-      close(socket_fd);
+      closeSocket(socket_fd); // 修改为使用 closeSocket 函数
       socket_fd = -1;
     }
 
@@ -73,7 +114,7 @@ public:
 
   void disconnect() {
     if (socket_fd >= 0) {
-      close(socket_fd);
+      closeSocket(socket_fd); // 修改为使用 closeSocket 函数
       socket_fd = -1;
       connected = false;
     }
@@ -118,6 +159,15 @@ private:
   bool connected;
   std::string host;
   int port;
+
+  // 添加一个平台无关的 closeSocket 函数
+  void closeSocket(int sock) {
+#ifdef _WIN32
+    closesocket(sock);
+#else
+    close(sock);
+#endif
+  }
 
   std::string formatResponse(const char *resp) {
     if (resp[0] == '+') {
@@ -276,6 +326,15 @@ int main(int argc, char *argv[]) {
   MiniCacheClient client;
   g_client = &client;
 
+#ifdef _WIN32
+  // 初始化 Winsock
+  WSADATA wsaData;
+  if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    std::cerr << "WSAStartup failed" << std::endl;
+    return 1;
+  }
+#endif
+
   // 连接到服务器
   if (!client.connect(host, port)) {
     return 1;
@@ -302,7 +361,11 @@ int main(int argc, char *argv[]) {
         }
         std::cout << "Reconnection attempt " << (i + 1)
                   << " failed. Retrying in 1 second..." << std::endl;
-        sleep(1);
+#ifdef _WIN32
+        Sleep(1000); // Windows 平台使用 Sleep 函数，参数单位是毫秒
+#else
+        sleep(1);    // UNIX/Linux 平台使用 sleep 函数，参数单位是秒
+#endif
       }
 
       if (!reconnected) {
@@ -351,6 +414,11 @@ int main(int argc, char *argv[]) {
   // 清理
   client.disconnect();
   clear_history();
+
+#ifdef _WIN32
+  // 清理 Winsock
+  WSACleanup();
+#endif
 
   return 0;
 }
