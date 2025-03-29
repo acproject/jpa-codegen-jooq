@@ -42,21 +42,157 @@ bool DataStore::validateDbCount(uint32_t db_count) const {
 
 size_t DataStore::getAvailableMemory() const {
   // 获取系统可用内存
-   #ifdef __APPLE__
-            int mib[2] = { CTL_HW, HW_MEMSIZE };
-            u_int namelen = sizeof(mib) / sizeof(mib[0]);
-            uint64_t size;
-            size_t len = sizeof(size);
-            
-            if (sysctl(mib, namelen, &size, &len, NULL, 0) < 0) {
-                return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
-            }
-            return size;
-        #else
-            return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
-        #endif
+#ifdef _WIN32
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        return memInfo.ullAvailPhys;
+    }
+    return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+#elif defined(__APPLE__)
+    int mib[2] = { CTL_HW, HW_MEMSIZE };
+    u_int namelen = sizeof(mib) / sizeof(mib[0]);
+    uint64_t size;
+    size_t len = sizeof(size);
+    
+    if (sysctl(mib, namelen, &size, &len, NULL, 0) < 0) {
+        return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+    }
+    return size;
+#elif defined(__linux__)
+    struct sysinfo memInfo;
+    if (sysinfo(&memInfo) == 0) {
+        return memInfo.freeram * memInfo.mem_unit;
+    }
+    return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+#else
+    return 8ULL * 1024 * 1024 * 1024;  // 默认8GB
+#endif
 }
 
+// 修改 saveMCDB 方法以支持 Windows 平台
+bool DataStore::saveMCDB(const std::string& filename) {
+    std::lock_guard<std::mutex> lock(mutex);
+    
+    // 先写入临时文件，成功后再重命名
+    std::string tempFilename = filename + ".tmp";
+    std::ofstream file(tempFilename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Failed to open file for writing: " << tempFilename << std::endl;
+        return false;
+    }
+
+    try {
+        // 写入魔数和版本号
+        const char magic[] = "MINCACHE"; // 确保长度为 8
+        std::cout << "Writing magic number: " << magic << std::endl;
+        file.write(magic, 8);
+        
+        // 写入数据库数量
+        uint32_t db_count = databases.size();
+        file.write(reinterpret_cast<char *>(&db_count), sizeof(db_count));
+
+        // 写入每个数据库的数据
+        for (size_t i = 0; i < databases.size(); ++i) {
+          auto &db = databases[i];
+          file.write(reinterpret_cast<char *>(&i), sizeof(i));
+
+          // 计算有效的键值对数量
+          uint32_t valid_kv_count = 0;
+          for (const auto &kv : db.data_array) {
+            if (kv.valid) valid_kv_count++;
+          }
+          
+          file.write(reinterpret_cast<char *>(&valid_kv_count), sizeof(valid_kv_count));
+
+          for (const auto &kv : db.data_array) {
+            if (!kv.valid)
+              continue;
+
+            uint32_t key_len = kv.key.length();
+            file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+            file.write(kv.key.c_str(), key_len);
+
+            uint32_t value_len = kv.value.length();
+            file.write(reinterpret_cast<char *>(&value_len), sizeof(value_len));
+            file.write(kv.value.c_str(), value_len);
+
+            auto it = db.metadata.find(kv.key);
+            long long expire_time =
+                (it != db.metadata.end()) ? it->second.expireTime : 0;
+            file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+          }
+          
+          // 计算有效的数值数组数量
+          uint32_t valid_nv_count = 0;
+          for (const auto &nv : db.numeric_array) {
+            if (nv.valid) valid_nv_count++;
+          }
+          
+          file.write(reinterpret_cast<char *>(&valid_nv_count), sizeof(valid_nv_count));
+
+          for (const auto &nv : db.numeric_array) {
+            if (!nv.valid)
+              continue;
+
+            // 写入键
+            uint32_t key_len = nv.key.length();
+            file.write(reinterpret_cast<char *>(&key_len), sizeof(key_len));
+            file.write(nv.key.c_str(), key_len);
+
+            // 写入数值数组长度
+            uint32_t values_len = nv.values.size();
+            file.write(reinterpret_cast<char *>(&values_len), sizeof(values_len));
+
+            // 写入数值数组内容
+            if (!nv.values.empty()) {
+              file.write(reinterpret_cast<const char *>(nv.values.data()),
+                        sizeof(float) * values_len);
+            }
+
+            // 写入过期时间
+            auto it = db.metadata.find(nv.key);
+            long long expire_time =
+                (it != db.metadata.end()) ? it->second.expireTime : 0;
+            file.write(reinterpret_cast<char *>(&expire_time), sizeof(expire_time));
+          }
+        }
+        
+        // 确保所有数据都写入磁盘
+        file.flush();
+        
+        // 关闭文件
+        file.close();
+        
+        // 如果一切正常，重命名临时文件为正式文件
+#ifdef _WIN32
+        // Windows 需要先删除目标文件
+        if (std::remove(filename.c_str()) != 0 && errno != ENOENT) {
+            std::cerr << "Failed to remove existing file: " << strerror(errno) << std::endl;
+            return false;
+        }
+        
+        if (std::rename(tempFilename.c_str(), filename.c_str()) != 0) {
+            std::cerr << "Failed to rename temporary file: " << strerror(errno) << std::endl;
+            return false;
+        }
+#else
+        if (std::rename(tempFilename.c_str(), filename.c_str()) != 0) {
+            std::cerr << "Failed to rename temporary file: " << strerror(errno) << std::endl;
+            return false;
+        }
+#endif
+        
+        std::cout << "Successfully saved MCDB file: " << filename << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving MCDB file: " << e.what() << std::endl;
+        file.close();
+        // 删除临时文件
+        std::remove(tempFilename.c_str());
+        return false;
+    }
+}
 
 // 清理过期键
 void DataStore::cleanExpiredKeys() {

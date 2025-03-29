@@ -4,49 +4,86 @@
 #include "TcpServer.hpp"
 #include <atomic>
 #include <chrono>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <filesystem>
+#include <signal.h>
+#endif
 
 // 全局变量
 TcpServer *g_server = nullptr;
 std::atomic<bool> g_running(true);
 
-void signal_handler(int signum) {
-  std::cout << "\nReceived signal " << signum << ", gracefully shutting down..."
-            << std::endl;
-
-  g_running = false; // 设置全局运行标志为 false
-
-  // 停止服务器
-  if (g_server) {
-    g_server->stop();
-  }
+#ifdef _WIN32
+BOOL WINAPI console_ctrl_handler(DWORD ctrl_type) {
+    switch (ctrl_type) {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+        case CTRL_LOGOFF_EVENT:
+        case CTRL_SHUTDOWN_EVENT:
+            std::cout << "\nReceived shutdown signal, gracefully shutting down..." << std::endl;
+            g_running = false;
+            if (g_server) {
+                g_server->stop();
+            }
+            return TRUE;
+        default:
+            return FALSE;
+    }
 }
+#else
+void signal_handler(int signum) {
+    std::cout << "\nReceived signal " << signum << ", gracefully shutting down..." << std::endl;
+    g_running = false;
+    if (g_server) {
+        g_server->stop();
+    }
+}
+#endif
 
 int main(int argc, char *argv[]) {
-  // 设置信号处理 - 使用标准 signal 函数，而不是 sigaction
-  signal(SIGINT, signal_handler);  // Ctrl+C
-  signal(SIGTERM, signal_handler); // kill 命令
-
-  // 解析命令行参数
-  std::string configPath = "conf/mcs.conf"; // 默认配置文件路径
-
-  for (int i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
-    if (arg == "--config" && i + 1 < argc) {
-      configPath = argv[i + 1];
-      ++i; // 跳过配置文件路径
+#ifdef _WIN32
+    // 设置 Windows 控制台处理函数
+    if (!SetConsoleCtrlHandler(console_ctrl_handler, TRUE)) {
+        std::cerr << "Failed to set control handler" << std::endl;
+        return 1;
     }
-  }
+#else
+    // 设置信号处理
+    signal(SIGINT, signal_handler);  // Ctrl+C
+    signal(SIGTERM, signal_handler); // kill 命令
+#endif
 
-  // 检查配置文件是否存在
-  if (!std::filesystem::exists(configPath)) {
-    std::cerr << "The configuration file does not exist: " << configPath << std::endl;
-    std::cerr << "Use the default configuration..." << std::endl;
-  }
+    // 解析命令行参数
+    std::string configPath = "conf/mcs.conf"; // 默认配置文件路径
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--config" && i + 1 < argc) {
+            configPath = argv[i + 1];
+            ++i; // 跳过配置文件路径
+        }
+    }
+
+    // 检查配置文件是否存在
+#ifdef _WIN32
+    DWORD fileAttributes = GetFileAttributesA(configPath.c_str());
+    bool configExists = (fileAttributes != INVALID_FILE_ATTRIBUTES && 
+                         !(fileAttributes & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    bool configExists = std::filesystem::exists(configPath);
+#endif
+
+    if (!configExists) {
+        std::cerr << "The configuration file does not exist: " << configPath << std::endl;
+        std::cerr << "Use the default configuration..." << std::endl;
+    }
 
   // 加载配置文件
   ConfigParser config(configPath);

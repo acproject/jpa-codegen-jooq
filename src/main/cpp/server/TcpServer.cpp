@@ -1,21 +1,39 @@
 #include "TcpServer.hpp"
 #include <iostream>
+#include <sstream>
 
 TcpServer::TcpServer(const std::string& configFile)
     : port(6379), // 默认端口
+#ifndef _WIN32
       event_fd(-1),
-      server_fd(-1),
+#endif
+      server_fd(INVALID_SOCKET_VALUE),
       running(false),
       config(configFile),
       dataStore(),
       commandHandler(dataStore)
 {
     loadConfig();
-    // 注意：loadConfig() 会更新 port 变量
+    
+#ifdef _WIN32
+    // 初始化 Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock" << std::endl;
+        return;
+    }
+    setup_server_windows();
+#else
     setup_server();
+#endif
 }
 
-TcpServer::~TcpServer() { stop(); }
+TcpServer::~TcpServer() { 
+    stop(); 
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
 void TcpServer::loadConfig() {
   // 加载基本配置
   host = config.getString("bind", "127.0.0.1");
@@ -283,3 +301,256 @@ void TcpServer::setupAutosave() {
     }
   }).detach();
 }
+
+#ifdef _WIN32
+void TcpServer::setup_server_windows() {
+    // 创建 IOCP
+    iocp_handle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    if (iocp_handle == NULL) {
+        std::cerr << "Failed to create IOCP: " << GetLastError() << std::endl;
+        return;
+    }
+
+    // 创建套接字
+    server_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (server_fd == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket: " << WSAGetLastError() << std::endl;
+        return;
+    }
+
+    // 设置地址重用
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) == SOCKET_ERROR) {
+        std::cerr << "Failed to set socket options: " << WSAGetLastError() << std::endl;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
+        return;
+    }
+
+    // 绑定地址
+    struct sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    
+    if (host == "0.0.0.0") {
+        address.sin_addr.s_addr = INADDR_ANY;
+    } else {
+        inet_pton(AF_INET, host.c_str(), &(address.sin_addr));
+    }
+
+    if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) == SOCKET_ERROR) {
+        std::cerr << "Failed to bind: " << WSAGetLastError() << std::endl;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
+        return;
+    }
+
+    // 监听连接
+    if (listen(server_fd, SOMAXCONN) == SOCKET_ERROR) {
+        std::cerr << "Failed to listen: " << WSAGetLastError() << std::endl;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
+        return;
+    }
+
+    // 将服务器套接字关联到 IOCP
+    if (CreateIoCompletionPort((HANDLE)server_fd, iocp_handle, (ULONG_PTR)server_fd, 0) == NULL) {
+        std::cerr << "Failed to associate server socket with IOCP: " << GetLastError() << std::endl;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
+        return;
+    }
+
+    std::cout << "Server is listening on " << host << ":" << port << std::endl;
+}
+
+void TcpServer::handle_client_windows() {
+    while (running) {
+        DWORD bytes_transferred = 0;
+        ULONG_PTR completion_key = 0;
+        LPOVERLAPPED overlapped = NULL;
+
+        // 等待 I/O 完成
+        BOOL result = GetQueuedCompletionStatus(
+            iocp_handle,
+            &bytes_transferred,
+            &completion_key,
+            &overlapped,
+            1000  // 超时时间（毫秒）
+        );
+
+        if (!result) {
+            if (overlapped == NULL) {
+                // 超时，继续循环
+                continue;
+            }
+            
+            // 处理错误
+            DWORD error = GetLastError();
+            if (error != ERROR_OPERATION_ABORTED) {
+                std::cerr << "I/O operation failed: " << error << std::endl;
+            }
+            
+            // 关闭客户端连接
+            socket_t client_fd = (socket_t)completion_key;
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            if (clients.find(client_fd) != clients.end()) {
+                CLOSE_SOCKET(client_fd);
+                clients.erase(client_fd);
+            }
+            continue;
+        }
+
+        socket_t client_fd = (socket_t)completion_key;
+        
+        // 检查是否是接受新连接
+        if (client_fd == server_fd) {
+            // 接受新连接
+            struct sockaddr_in client_addr;
+            int addr_len = sizeof(client_addr);
+            socket_t new_client = accept(server_fd, (struct sockaddr*)&client_addr, &addr_len);
+            
+            if (new_client == INVALID_SOCKET) {
+                std::cerr << "Failed to accept: " << WSAGetLastError() << std::endl;
+                continue;
+            }
+            
+            // 将新客户端套接字关联到 IOCP
+            if (CreateIoCompletionPort((HANDLE)new_client, iocp_handle, (ULONG_PTR)new_client, 0) == NULL) {
+                std::cerr << "Failed to associate client socket with IOCP: " << GetLastError() << std::endl;
+                CLOSE_SOCKET(new_client);
+                continue;
+            }
+            
+            // 初始化客户端状态
+            ClientState client_state;
+            ZeroMemory(&client_state.overlapped, sizeof(WSAOVERLAPPED));
+            client_state.wsaBuf.buf = client_state.recvBuffer;
+            client_state.wsaBuf.len = sizeof(client_state.recvBuffer);
+            client_state.pendingRead = false;
+            
+            {
+                std::lock_guard<std::mutex> lock(clients_mutex);
+                clients[new_client] = client_state;
+            }
+            
+            // 开始异步读取
+            DWORD flags = 0;
+            DWORD bytes_received = 0;
+            
+            int recv_result = WSARecv(
+                new_client,
+                &clients[new_client].wsaBuf,
+                1,
+                &bytes_received,
+                &flags,
+                &clients[new_client].overlapped,
+                NULL
+            );
+            
+            if (recv_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+                std::cerr << "Failed to start async read: " << WSAGetLastError() << std::endl;
+                CLOSE_SOCKET(new_client);
+                clients.erase(new_client);
+            } else {
+                clients[new_client].pendingRead = true;
+            }
+        } else {
+            // 处理客户端数据
+            std::lock_guard<std::mutex> lock(clients_mutex);
+            auto it = clients.find(client_fd);
+            if (it == clients.end()) {
+                continue;
+            }
+            
+            ClientState& client_state = it->second;
+            
+            if (bytes_transferred == 0) {
+                // 客户端断开连接
+                CLOSE_SOCKET(client_fd);
+                clients.erase(client_fd);
+                continue;
+            }
+            
+            // 处理接收到的数据
+            client_state.buffer.append(client_state.recvBuffer, bytes_transferred);
+            
+            // 解析并处理命令
+            std::string command = client_state.buffer;
+            process_command(client_fd, command);
+            
+            // 清空缓冲区，准备下一次读取
+            client_state.buffer.clear();
+            ZeroMemory(&client_state.overlapped, sizeof(WSAOVERLAPPED));
+            
+            // 开始下一次异步读取
+            DWORD flags = 0;
+            DWORD bytes_received = 0;
+            
+            int recv_result = WSARecv(
+                client_fd,
+                &client_state.wsaBuf,
+                1,
+                &bytes_received,
+                &flags,
+                &client_state.overlapped,
+                NULL
+            );
+            
+            if (recv_result == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING) {
+                std::cerr << "Failed to start async read: " << WSAGetLastError() << std::endl;
+                CLOSE_SOCKET(client_fd);
+                clients.erase(client_fd);
+            }
+        }
+    }
+}
+#else
+// 保留现有的 setup_server 和 handle_client 方法
+#endif
+
+void TcpServer::start() {
+    if (running) return;
+    running = true;
+
+#ifdef _WIN32
+    // 启动 Windows 版本的客户端处理线程
+    std::thread([this]() {
+        handle_client_windows();
+    }).detach();
+#else
+    // 保留现有的启动代码
+#endif
+}
+
+void TcpServer::stop() {
+    if (!running) return;
+    running = false;
+
+#ifdef _WIN32
+    // 关闭所有客户端连接
+    {
+        std::lock_guard<std::mutex> lock(clients_mutex);
+        for (auto& client : clients) {
+            CLOSE_SOCKET(client.first);
+        }
+        clients.clear();
+    }
+
+    // 关闭服务器套接字
+    if (server_fd != INVALID_SOCKET_VALUE) {
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
+    }
+
+    // 关闭 IOCP
+    if (iocp_handle != NULL) {
+        CloseHandle(iocp_handle);
+        iocp_handle = NULL;
+    }
+#else
+    // 保留现有的停止代码
+#endif
+}
+
+// 保留现有的 process_command 方法

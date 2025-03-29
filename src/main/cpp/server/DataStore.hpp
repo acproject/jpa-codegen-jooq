@@ -6,8 +6,15 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
-#ifdef __APPLE__
-#include <sys/sysctl.h>  // 添加系统头文件，用于 sysctl 函数
+#include <atomic>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__APPLE__)
+#include <sys/sysctl.h>
+#elif defined(__linux__)
+#include <sys/sysinfo.h>
 #endif
 
 class DataStore {
