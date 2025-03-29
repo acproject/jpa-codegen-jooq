@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(FetchContent)
+
 # 头文件目录
 include_directories(src/main/cpp/server)
 include_directories(src/main/cpp/client)
@@ -23,7 +25,13 @@ add_library(resp_parser SHARED src/main/cpp/server/RespParser.cpp)
 
 # 创建 DataStore 库
 add_library(data_store SHARED src/main/cpp/server/DataStore.cpp)
-find_package(nlohmann_json REQUIRED)
+
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.2  # 指定版本号
+)
+FetchContent_MakeAvailable(nlohmann_json)
 # 创建 CommandHandler 库
 # 修改 command_handler 库的链接部分
 add_library(command_handler SHARED
