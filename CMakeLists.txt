@@ -26,12 +26,22 @@ add_library(resp_parser SHARED src/main/cpp/server/RespParser.cpp)
 # 创建 DataStore 库
 add_library(data_store SHARED src/main/cpp/server/DataStore.cpp)
 
-FetchContent_Declare(
-    nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.11.2  # 指定版本号
-)
-FetchContent_MakeAvailable(nlohmann_json)
+# 先尝试查找本地安装的 nlohmann_json
+find_package(nlohmann_json QUIET)
+
+# 如果没有找到本地安装的 nlohmann_json，则使用 FetchContent 下载
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "Local nlohmann_json not found, fetching from GitHub...")
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.2  # 指定版本号
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+else()
+    message(STATUS "Found local nlohmann_json: ${nlohmann_json_VERSION}")
+endif()
+
 # 创建 CommandHandler 库
 # 修改 command_handler 库的链接部分
 add_library(command_handler SHARED

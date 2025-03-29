@@ -509,48 +509,4 @@ void TcpServer::handle_client_windows() {
 // 保留现有的 setup_server 和 handle_client 方法
 #endif
 
-void TcpServer::start() {
-    if (running) return;
-    running = true;
 
-#ifdef _WIN32
-    // 启动 Windows 版本的客户端处理线程
-    std::thread([this]() {
-        handle_client_windows();
-    }).detach();
-#else
-    // 保留现有的启动代码
-#endif
-}
-
-void TcpServer::stop() {
-    if (!running) return;
-    running = false;
-
-#ifdef _WIN32
-    // 关闭所有客户端连接
-    {
-        std::lock_guard<std::mutex> lock(clients_mutex);
-        for (auto& client : clients) {
-            CLOSE_SOCKET(client.first);
-        }
-        clients.clear();
-    }
-
-    // 关闭服务器套接字
-    if (server_fd != INVALID_SOCKET_VALUE) {
-        CLOSE_SOCKET(server_fd);
-        server_fd = INVALID_SOCKET_VALUE;
-    }
-
-    // 关闭 IOCP
-    if (iocp_handle != NULL) {
-        CloseHandle(iocp_handle);
-        iocp_handle = NULL;
-    }
-#else
-    // 保留现有的停止代码
-#endif
-}
-
-// 保留现有的 process_command 方法
