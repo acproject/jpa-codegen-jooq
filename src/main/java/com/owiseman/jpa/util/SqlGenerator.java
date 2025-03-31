@@ -69,7 +69,7 @@ public class SqlGenerator implements MapToType {
                             .append(" (").append(fk.refColumn()).append(");\n");
                 }
         );
-        
+
         // 移除自动为_id字段创建外键的逻辑
         // 下面这段代码被注释掉或删除
         /*
@@ -110,7 +110,7 @@ public class SqlGenerator implements MapToType {
             // 对于其他自定义类型，直接使用columnDefinition的值
             return columnDef + (col.nullable() ? "" : " NOT NULL");
         }
-        
+
         String baseType = switch (dataSourceEnum) {
             case POSTGRESQL -> {
                 if (isEnumType(col.typeName())) {
@@ -127,6 +127,12 @@ public class SqlGenerator implements MapToType {
                     case "double", "java.lang.Double" -> "DOUBLE PRECISION"; // 新增 double 类型
                     case "java.util.UUID" -> "VARCHAR(255)";
                     case "java.lang.String" -> {
+                        if (col.hasColumnDefinition()) {
+                            String def = col.columnDefinition().toUpperCase();
+                            if (def.contains("TEXT")) {
+                                yield "TEXT";
+                            }
+                        }
                         int length = col.length();
                         yield "VARCHAR(" + (length > 0 ? length : 255) + ")";
                     }

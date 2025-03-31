@@ -59,7 +59,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes({ "jakarta.persistence.Entity" })
+@SupportedAnnotationTypes({"jakarta.persistence.Entity"})
 @SupportedSourceVersion(SourceVersion.RELEASE_21)
 public class JpaEntityScannerProcessor extends AbstractProcessor {
     private Elements elementUtils;
@@ -176,8 +176,8 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             };
 
             FieldSpec field = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
-                    col.name().toUpperCase(),
-                    Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                            col.name().toUpperCase(),
+                            Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                     .initializer("DSL.field(\"" + col.name() + "\", " + type + ")")
                     .build();
             fields.add(field);
@@ -201,7 +201,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
     private FieldSpec getTableFieldSpec(String tableName) {
 
         return FieldSpec.builder(ClassName.get("org.jooq", "Table"),
-                "TABLE", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                        "TABLE", Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                 .initializer("DSL.table(\"" + tableName + "\")").build();
     }
 
@@ -237,8 +237,8 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         // 生成外键字段定义
         String sqlDataType = getSqlDataTypeForForeignKey(pkType);
         FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
-                field.getSimpleName().toString().toUpperCase(),
-                Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                        field.getSimpleName().toString().toUpperCase(),
+                        Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                 .initializer("DSL.field(\"" + fkColumnName + "\", " + sqlDataType + ")")
                 .build();
         fieldSpecs.add(fieldSpec);
@@ -250,15 +250,15 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
         // 首先收集所有多对多关系和一对多关系的字段名，用于后续过滤
         Set<String> excludedFields = fields.stream()
-                .filter(field -> field.getAnnotation(ManyToMany.class) != null || 
-                                field.getAnnotation(OneToMany.class) != null)
+                .filter(field -> field.getAnnotation(ManyToMany.class) != null ||
+                        field.getAnnotation(OneToMany.class) != null)
                 .map(field -> field.getSimpleName().toString())
                 .collect(Collectors.toSet());
 
         for (var field : fields) {
             // 跳过多对多关系和一对多关系的集合字段
-            if (field.getAnnotation(ManyToMany.class) != null || 
-                field.getAnnotation(OneToMany.class) != null) {
+            if (field.getAnnotation(ManyToMany.class) != null ||
+                    field.getAnnotation(OneToMany.class) != null) {
                 continue;
             }
 
@@ -290,7 +290,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
                 // 生成正确的字段定义
                 FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
-                        fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                                fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                         .initializer(
                                 "DSL.field(" + "\"" + joinColumn.name() + "\"," + "\"" + joinColumn.name() + "\"," +
                                         sqlDataType + ".nullable(" + isNullable + "))")
@@ -301,18 +301,22 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
 
             String sqlDataType = getSqlDataType(typeName, field);
             String dataTypeWithLength;
-            
+
             // 对于JSONB和JSON类型，不应用长度限制
             if (sqlDataType.contains("JSONB") || sqlDataType.contains("JSON")) {
                 dataTypeWithLength = sqlDataType;
             } else if (typeName.equals("java.lang.String")) {
-                dataTypeWithLength = sqlDataType + ".length(" + getColumnLength(field) + ")";
+                if (sqlDataType.equalsIgnoreCase("SQLDataType.CLOB")) {
+                    dataTypeWithLength = sqlDataType;
+                } else {
+                    dataTypeWithLength = sqlDataType + ".length(" + getColumnLength(field) + ")";
+                }
             } else {
                 dataTypeWithLength = sqlDataType;
             }
 
             FieldSpec fieldSpec = FieldSpec.builder(ClassName.get("org.jooq", "Field"),
-                    fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
+                            fieldName.toUpperCase(), Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
                     .initializer(
                             "DSL.field(" + "\"" + columnName + "\"," + "\"" + columnName + "\"," + dataTypeWithLength +
                                     ".nullable(" + isNullable(field) + "))")
@@ -388,7 +392,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         if (field.getAnnotation(OneToMany.class) != null) {
             return getSqlDataTypeForOneToMany(field);
         }
-        
+
         // 检查Column注解的columnDefinition属性
         Column columnAnnotation = field.getAnnotation(Column.class);
         if (columnAnnotation != null && !columnAnnotation.columnDefinition().isEmpty()) {
@@ -403,7 +407,7 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             // 其他自定义类型默认为VARCHAR
             return "SQLDataType.VARCHAR";
         }
-        
+
         // 处理枚举类型
         if (typeName.endsWith("Enum") || typeName.contains(".enums.")) {
             return "SQLDataType.VARCHAR";
@@ -491,12 +495,12 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         String tableName = (tableAnnotation != null && !tableAnnotation.name().isEmpty())
                 ? tableAnnotation.name()
                 : convertClassNameToTableName(element.getSimpleName().toString());
-                
+
         // 收集所有需要排除的字段（多对多关系和一对多关系）
         Set<VariableElement> excludedFields = ElementFilter.fieldsIn(element.getEnclosedElements())
                 .stream()
-                .filter(field -> field.getAnnotation(ManyToMany.class) != null || 
-                                field.getAnnotation(OneToMany.class) != null)
+                .filter(field -> field.getAnnotation(ManyToMany.class) != null ||
+                        field.getAnnotation(OneToMany.class) != null)
                 .collect(Collectors.toSet());
 
         // 解析字段
@@ -505,8 +509,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 .filter(field -> !excludedFields.contains(field)) // 过滤掉多对多关系和一对多关系
                 .map(field -> {
                     Column column = field.getAnnotation(Column.class);
+
                     String typeName = field.asType().toString();
-                    
+
                     // 检查是否为JSONB或JSON类型
                     if (column != null && column.columnDefinition() != null) {
                         String columnDef = column.columnDefinition().toUpperCase();
@@ -514,20 +519,25 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                             typeName = "org.jooq.JSONB";
                         } else if (columnDef.contains("JSON")) {
                             typeName = "org.jooq.JSON";
+                        } else if (columnDef.contains("TEXT")) {
+                            typeName = "java.lang.String";
                         }
                     }
-                    
+
                     // 检查集合类型
                     if (typeName.contains("List") || typeName.contains("Set") || typeName.contains("Map")) {
                         typeName = "org.jooq.JSONB";
                     }
-                    
+                    String columnDef = column != null ? column.columnDefinition() : ""; // 获取定义
+                    String s = "";
                     return new ColumnMeta(
                             getColumnName(field),
                             typeName,
                             column != null ? column.length() : 255,
                             column == null || column.nullable(),
-                            column != null && column.unique());
+                            column != null && column.unique(),
+                            columnDef
+                    );
                 })
                 .collect(Collectors.toList());
 
@@ -581,13 +591,14 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                                                 sourceType, // 使用当前实体主键类型
                                                 getColumnLength(field),
                                                 false,
-                                                false),
+                                                false,
+                                                ""),
                                         new ColumnMeta(
                                                 joinTable.inverseJoinColumns()[0].name(),
                                                 targetType, // 使用关联实体主键类型
                                                 getColumnLength(field),
                                                 false,
-                                                false)),
+                                                false,"")),
                                 List.of(
                                         // 联合主键
                                         joinTable.joinColumns()[0].name(),
