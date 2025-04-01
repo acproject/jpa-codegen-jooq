@@ -7,13 +7,27 @@ import org.jooq.impl.SQLDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.owiseman.jpa.JpaEntityScannerProcessor.convertClassNameToTableName;
 
 public class SqlGenerator implements MapToType {
     private final List<String> ddlStatements = new ArrayList<>();
+    private boolean pgvectorExtensionAdded = false;
 
     public void addTable(TableMeta table, DataSourceEnum dataSourceEnum) {
+        // 检查是否需要添加 pgvector 扩展
+        if (!pgvectorExtensionAdded && 
+            table.columns().stream().anyMatch(col -> 
+                col.hasColumnDefinition() && 
+                col.columnDefinition().toLowerCase().contains("vector"))) {
+            
+            // 添加 pgvector 扩展创建语句作为第一条语句
+            ddlStatements.add(0, "CREATE EXTENSION IF NOT EXISTS vector;");
+            pgvectorExtensionAdded = true;
+        }
+        
         ddlStatements.add(buildCreateTableStatement(table, dataSourceEnum));
     }
 
@@ -70,41 +84,31 @@ public class SqlGenerator implements MapToType {
                 }
         );
 
-        // 移除自动为_id字段创建外键的逻辑
-        // 下面这段代码被注释掉或删除
-        /*
-        table.columns().stream()
-                .filter(col -> {
-                    // 只处理真正的外键字段，不处理集合字段
-                    return col.name().endsWith("_id") && !isCollectionOrMapType(col.typeName());
-                })
-                .forEach(col -> {
-                    // 只有当这个外键没有被明确定义时才添加
-                    if (table.foreignKeys().stream().noneMatch(fk -> fk.column().equals(col.name()))) {
-                        String refTable = col.name().substring(0, col.name().length() - 3); // 移除"_id"
-                        sb.append("ALTER TABLE ").append(table.name())
-                                .append(" ADD CONSTRAINT fk_").append(table.name()).append("_").append(col.name())
-                                .append(" FOREIGN KEY (").append(col.name())
-                                .append(") REFERENCES ").append(refTable)
-                                .append("(id);\n");
-                    }
-                });
-        */
-
         return sb.toString();
     }
 
 
     @Override
     public String mapToType(ColumnMeta col, DataSourceEnum dataSourceEnum) {
-        // 首先检查是否有columnDefinition属性（我们需要在ColumnMeta中添加这个属性）
+        // 首先检查是否有columnDefinition属性
         if (col.hasColumnDefinition()) {
-            String columnDef = col.columnDefinition().toUpperCase();
-            if (columnDef.contains("JSON") && !columnDef.contains("JSONB")) {
+            String columnDef = col.columnDefinition().toLowerCase();
+            
+            // 处理 vector 类型
+            if (columnDef.contains("vector")) {
+                // 提取向量维度
+                Pattern pattern = Pattern.compile("vector\\((\\d+)\\)");
+                Matcher matcher = pattern.matcher(columnDef);
+                if (matcher.find()) {
+                    String dimension = matcher.group(1);
+                    return "vector(" + dimension + ")" + (col.nullable() ? "" : " NOT NULL");
+                }
+                return "vector" + (col.nullable() ? "" : " NOT NULL");
+            } else if (columnDef.contains("json") && !columnDef.contains("jsonb")) {
                 return "JSON" + (col.nullable() ? "" : " NOT NULL");
-            } else if (columnDef.contains("JSONB")) {
+            } else if (columnDef.contains("jsonb")) {
                 return "JSONB" + (col.nullable() ? "" : " NOT NULL");
-            } else if (columnDef.contains("TEXT")) {
+            } else if (columnDef.contains("text")) {
                 return "TEXT" + (col.nullable() ? "" : " NOT NULL");
             }
             // 对于其他自定义类型，直接使用columnDefinition的值
@@ -120,11 +124,17 @@ public class SqlGenerator implements MapToType {
                 if (isCollectionOrMapType(col.typeName())) {
                     yield "JSONB";
                 }
+                
+                // 处理 float[] 类型为 vector 类型
+                if (col.typeName().equals("float[]")) {
+                    yield "vector(768)"; // 默认使用768维度，可以根据需要调整
+                }
+                
                 yield switch (col.typeName()) {
                     case "int", "java.lang.Integer" -> "INTEGER";
                     case "long", "java.lang.Long" -> "BIGINT";
-                    case "float", "java.lang.Float" -> "FLOAT";        // 新增 float 类型
-                    case "double", "java.lang.Double" -> "DOUBLE PRECISION"; // 新增 double 类型
+                    case "float", "java.lang.Float" -> "FLOAT";
+                    case "double", "java.lang.Double" -> "DOUBLE PRECISION";
                     case "java.util.UUID" -> "VARCHAR(255)";
                     case "java.lang.String" -> {
                         if (col.hasColumnDefinition()) {

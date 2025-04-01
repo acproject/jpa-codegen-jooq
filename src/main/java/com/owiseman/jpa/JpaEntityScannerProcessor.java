@@ -396,16 +396,23 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         // 检查Column注解的columnDefinition属性
         Column columnAnnotation = field.getAnnotation(Column.class);
         if (columnAnnotation != null && !columnAnnotation.columnDefinition().isEmpty()) {
-            String columnDef = columnAnnotation.columnDefinition().toUpperCase();
-            if (columnDef.contains("JSON") && !columnDef.contains("JSONB")) {
+            String columnDef = columnAnnotation.columnDefinition().toLowerCase();
+            if (columnDef.contains("vector")) {
+                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.VectorBinding())";
+            } else if (columnDef.contains("json") && !columnDef.contains("jsonb")) {
                 return "SQLDataType.JSON";
-            } else if (columnDef.contains("JSONB")) {
+            } else if (columnDef.contains("jsonb")) {
                 return "SQLDataType.JSONB";
-            } else if (columnDef.contains("TEXT")) {
+            } else if (columnDef.contains("text")) {
                 return "SQLDataType.CLOB";
             }
             // 其他自定义类型默认为VARCHAR
             return "SQLDataType.VARCHAR";
+        }
+
+        // 处理 float[] 类型
+        if (typeName.equals("float[]")) {
+            return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.VectorBinding())";
         }
 
         // 处理枚举类型
@@ -419,13 +426,6 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
                 || typeName.contains("Set")) {
             return "SQLDataType.JSONB";
         }
-
-        // if (typeName.contains("Map")
-        // || typeName.contains("List")
-        // || typeName.contains("Set")) {
-        // return "SQLDataType.JSONB" + ".asConvertedDataType(new
-        // com.owiseman.jpa.util.JsonMapBinding())";
-        // }
 
         return switch (typeName) {
             case "Numeric" -> "SQLDataType.NUMERIC";

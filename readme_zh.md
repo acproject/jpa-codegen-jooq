@@ -189,9 +189,16 @@ import com.owiseman.jpa.cache.client;
     }
 ```
 
+
 ### 将要实现的功能
 * [ ] 内置消息队列功能
 * [ ] 轻量级内置缓存功能 
+
+### 小技巧
+如果你是docker部署的Postgres数据库可以这样来备份数据库
+```shell
+docker exec -it my-postgres-container pg_dumpall -U postgres > backup.sql
+```
 
 ### 参考
 https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md
