@@ -94,8 +94,19 @@ public class SqlGenerator implements MapToType {
         if (col.hasColumnDefinition()) {
             String columnDef = col.columnDefinition().toLowerCase();
             
+            // 处理 vector[] 类型
+            if (columnDef.contains("vector[]")) {
+                // 提取向量维度
+                Pattern pattern = Pattern.compile("vector\\[\\]\\((\\d+)\\)");
+                Matcher matcher = pattern.matcher(columnDef);
+                if (matcher.find()) {
+                    String dimension = matcher.group(1);
+                    return "vector[](" + dimension + ")" + (col.nullable() ? "" : " NOT NULL");
+                }
+                return "vector[]" + (col.nullable() ? "" : " NOT NULL");
+            }
             // 处理 vector 类型
-            if (columnDef.contains("vector")) {
+            else if (columnDef.contains("vector")) {
                 // 提取向量维度
                 Pattern pattern = Pattern.compile("vector\\((\\d+)\\)");
                 Matcher matcher = pattern.matcher(columnDef);
@@ -114,19 +125,24 @@ public class SqlGenerator implements MapToType {
             // 对于其他自定义类型，直接使用columnDefinition的值
             return columnDef + (col.nullable() ? "" : " NOT NULL");
         }
-
+    
         String baseType = switch (dataSourceEnum) {
             case POSTGRESQL -> {
                 if (isEnumType(col.typeName())) {
                     yield "VARCHAR(255)";
                 }
-
+    
                 if (isCollectionOrMapType(col.typeName())) {
                     yield "JSONB";
                 }
                 
+                // 处理 Float[][] 类型为 vector[] 类型
+                if (col.typeName().equals("Float[][]") || col.typeName().equals("float[][]")) {
+                    yield "vector[](768)"; // 默认使用768维度，可以根据需要调整
+                }
+                
                 // 处理 float[] 类型为 vector 类型
-                if (col.typeName().equals("float[]")) {
+                if (col.typeName().equals("float[]") || col.typeName().equals("Float[]")) {
                     yield "vector(768)"; // 默认使用768维度，可以根据需要调整
                 }
                 
@@ -160,7 +176,7 @@ public class SqlGenerator implements MapToType {
             }
             default -> throw new IllegalArgumentException("Unsupported database type");
         };
-
+    
         // 添加NOT NULL约束
         return baseType + (col.nullable() ? "" : " NOT NULL");
     }

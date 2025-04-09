@@ -397,7 +397,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         Column columnAnnotation = field.getAnnotation(Column.class);
         if (columnAnnotation != null && !columnAnnotation.columnDefinition().isEmpty()) {
             String columnDef = columnAnnotation.columnDefinition().toLowerCase();
-            if (columnDef.contains("vector")) {
+            if (columnDef.contains("vector[]")) {
+                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.Vector2DBinding())";
+            } else if (columnDef.contains("vector")) {
                 return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.VectorBinding())";
             } else if (columnDef.contains("json") && !columnDef.contains("jsonb")) {
                 return "SQLDataType.JSON";
@@ -410,8 +412,13 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
             return "SQLDataType.VARCHAR";
         }
 
+        // 处理 Float[][] 类型
+        if (typeName.equals("Float[][]") || typeName.equals("float[][]")) {
+            return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.Vector2DBinding())";
+        }
+
         // 处理 float[] 类型
-        if (typeName.equals("float[]")) {
+        if (typeName.equals("float[]") || typeName.equals("Float[]")) {
             return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.VectorBinding())";
         }
 
