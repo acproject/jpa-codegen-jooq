@@ -28,6 +28,7 @@ dependencies {
     compileOnly 'javax.persistence:javax.persistence-api:2.2'
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.4.2'
     implementation 'org.springframework.amqp:spring-rabbit:3.2.1'
+    implementation 'org.postgresql:postgresql:42.7.5'
 }
 ext {
     cppConfig = project.hasProperty('cppConfig') ? project.cppConfig : 'Release'
@@ -77,10 +78,10 @@ task getCmakePath(type: Exec) {
 // C++ 构建任务
 task buildCpp(type: Exec, dependsOn: getCmakePath) {
     workingDir project.rootDir
-    
+
     // 设置默认的错误处理
     ignoreExitValue = true
-    
+
     doFirst {
         // 检查 CMakeLists.txt 是否存在
         def cmakeListsFile = new File(project.rootDir, "CMakeLists.txt")
@@ -90,12 +91,12 @@ task buildCpp(type: Exec, dependsOn: getCmakePath) {
 
         // 创建构建目录
         project.mkdir("${project.rootDir}/build/cpp")
-        
+
         // 设置任务属性
         ignoreExitValue = true
         errorOutput = new ByteArrayOutputStream()
         standardOutput = new ByteArrayOutputStream()
-        
+
         // 设置命令行，使用项目根目录作为源目录  cmake .. -DCMAKE_BUILD_TYPE=Release
         commandLine project.ext.cmakeTool,
                 '-S', "${project.rootDir}",

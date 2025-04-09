@@ -398,9 +398,9 @@ public class JpaEntityScannerProcessor extends AbstractProcessor {
         if (columnAnnotation != null && !columnAnnotation.columnDefinition().isEmpty()) {
             String columnDef = columnAnnotation.columnDefinition().toLowerCase();
             if (columnDef.contains("vector[]")) {
-                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.Vector2DBinding())";
+                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.PgVector2DArrayConverter())";
             } else if (columnDef.contains("vector")) {
-                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.VectorBinding())";
+                return "SQLDataType.OTHER.asConvertedDataType(new com.owiseman.jpa.util.PgVectorArrayConverter())";
             } else if (columnDef.contains("json") && !columnDef.contains("jsonb")) {
                 return "SQLDataType.JSON";
             } else if (columnDef.contains("jsonb")) {
