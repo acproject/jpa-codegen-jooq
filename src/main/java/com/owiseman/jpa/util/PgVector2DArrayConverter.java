@@ -67,7 +67,6 @@ public class PgVector2DArrayConverter implements Converter<Object, Float[][]> {
             if (i < userObject.length - 1) sb.append(",");
         }
         sb.append("}");
-        sb.append("::vector[]");
         return sb.toString(); // 返回字符串形式的数组，如 '{{[0.1,0.2]},{[0.3,0.4]}}'
     }
 }
