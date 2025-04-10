@@ -20,7 +20,6 @@ import java.sql.Types;
 /**
  * 用于处理 PostgreSQL vector[](n) 类型的自定义绑定
  */
-@Deprecated
 public class Vector2DBinding implements Binding<Object, Float[][]> {
 
     @Override

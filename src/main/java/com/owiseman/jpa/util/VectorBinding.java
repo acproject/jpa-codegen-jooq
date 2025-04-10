@@ -24,7 +24,6 @@ import java.util.regex.Pattern;
 /**
  * 用于处理 PostgreSQL pgvector 类型的自定义绑定
  */
-@Deprecated
 public class VectorBinding implements Binding<Object, Float[]> {
 
     @Override
