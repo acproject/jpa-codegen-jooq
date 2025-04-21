@@ -3,6 +3,7 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+./idea/**
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
@@ -42,3 +43,10 @@ bin/
 .DS_Store
 /CMakeFiles/
 /xbuild/
+.idea/.gitignore
+.idea/gradle.xml
+.idea/misc.xml
+.idea/vcs.xml
+.idea/codeStyles/codeStyleConfig.xml
+.idea/codeStyles/Project.xml
+.idea/inspectionProfiles/Project_Default.xml
