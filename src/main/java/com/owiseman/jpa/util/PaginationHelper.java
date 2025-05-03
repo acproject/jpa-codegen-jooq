@@ -1,7 +1,10 @@
 package com.owiseman.jpa.util;
 
+import org.jetbrains.annotations.NotNull;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Result;
 import org.jooq.SortField;
 import org.jooq.impl.DSL;
 
@@ -74,6 +77,26 @@ public class PaginationHelper {
             .limit(pageSize)
             .offset((pageNumber - 1) * pageSize)
             .fetchInto(entityClass);
+    }
+
+    public static @NotNull Result<Record> getPaginatedDataToResult(DSLContext dsl,
+                                                                   Condition condition,
+                                                                   String tableName,
+                                                                   int pageSize,
+                                                                   int pageNumber,
+                                                                   SortField<?>... sortFields) { // 新增排序参数
+        if (pageSize <= 0) {
+            pageSize = 1;
+        }
+        if (pageNumber <= 0) {
+            pageNumber = 1;
+        }
+        return dsl.selectFrom(DSL.table(tableName))
+            .where(condition)
+            .orderBy(sortFields) // 应用排序
+            .limit(pageSize)
+            .offset((pageNumber - 1) * pageSize)
+            .fetch();
     }
 
 
