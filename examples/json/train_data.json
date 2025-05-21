@@ -1,0 +1,56 @@
+[
+  {
+    "instruction": "查询订单表",
+    "steps": [
+      {
+        "dsl": {
+          "operation": "select",
+          "use_transaction": true,
+          "table": "orders",
+          "pagination": {
+            "page": 1,
+            "pageSize": 10
+          }
+        },
+        "action": "query",
+        "purpose": "按照分页方式查询第1页的10条订单数据"
+      },
+      {
+        "dsl": {
+          "operation": "select",
+          "table": "users",
+          "where": {
+            "username": {
+              "operator": "eq",
+              "value": "john_deo7"
+            }
+          },
+          "pagination": {
+            "page": 1,
+            "pageSize": 10
+          }
+        },
+        "action": "query",
+        "purpose": "按照分页方式查询第1页的10条用户名等于john_deo7的用户数据"
+      }
+    ]
+  },
+  {
+    "instruction": "查询订单表",
+    "steps": [
+      {
+        "dsl": {
+          "operation": "select",
+          "use_transaction": true,
+          "table": "orders",
+          "pagination": {
+            "page": 2,
+            "pageSize": 10
+          }
+        },
+        "action": "query",
+        "purpose": "按照分页方式查询第2页的10条订单数据"
+      }
+    ]
+  }
+]
