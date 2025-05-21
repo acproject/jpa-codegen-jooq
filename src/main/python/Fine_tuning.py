@@ -19,10 +19,10 @@ import torch
 
 # 加载模型和Tokenizer
 model = AutoModelForCausalLM.from_pretrained(
-    "meta-llama/Llama-3B",
+    "Qwen/Qwen2.5-Coder-3B-Instruct",
     torch_dtype=torch.bfloat16)
 
-AutoTokenizer.from_pretrained("meta-llama/Llama-3B")
+AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-3B-Instruct")
 
 # 添加LoRA适配器
 model = get_peft_model(model, lora_config)
@@ -30,7 +30,7 @@ model.print_trainable_parameters() # 可以查看训练参数量（通常0.1%-1%
 
 # 配置训练参数
 training_args = TrainingArguments(
-    output_dir="output/lora-Phi-3-medium-4k-instruct",
+    output_dir="output/lora-Qwen2.5-Coder-3B-Instruct",
     learning_rate=3e-4,
     num_train_epochs=5,
     per_device_train_batch_size=8,
@@ -74,7 +74,7 @@ tokenized_eval_dataset = eval_dataset.map(preprocess_function, batched=True)
 from transformers import Trainer
 
 # 初始化Tokenizer
-tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-3-medium-4k-instruct")
+tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-3B-Instruct")
 
 # 开始训练
 trainer = Trainer(
