@@ -19,10 +19,10 @@ import torch
 
 # 加载模型和Tokenizer
 model = AutoModelForCausalLM.from_pretrained(
-    "microsoft/Phi-3-medium-4k-instruct",
+    "meta-llama/Llama-3B",
     torch_dtype=torch.bfloat16)
 
-AutoTokenizer.from_pretrained("microsoft/Phi-3-medium-4k-instruct")
+AutoTokenizer.from_pretrained("meta-llama/Llama-3B")
 
 # 添加LoRA适配器
 model = get_peft_model(model, lora_config)
