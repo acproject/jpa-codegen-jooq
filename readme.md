@@ -34,10 +34,10 @@ At present, because there is no central repository for Maven, you need to manual
 ```shell
 # Install it locally using Maven
 mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.2-all.jar  \
+-Dfile=build/libs/jpa-codegen-jooq-0.3.0-all.jar  \
 -DgroupId=com.owiseman \
 -DartifactId=jpa-codegen-jooq \
--Dversion=0.2.2 \
+-Dversion=0.3.0 \
 -Dpackaging=jar \
 -DgeneratePom=true
 ```
@@ -161,6 +161,36 @@ Here, take the maven project as an example: insert the following code in the bui
 ### The functionality that will be implemented
 * [ ] Built-in message queuing functionality
 * [ ] Lightweight built-in caching capabilities
+### New Support for Apache AGE Graph Database 🚀
+The project now supports operations with the Apache AGE graph database using JSON DSL for various graph operations.
+
+#### Supported Graph Database Operations
+- **Graph Management**: Create graph, delete graph, get graph statistics
+- **Label Management**: Create node labels, create edge labels
+- **Cypher Queries**: CREATE, MATCH, MERGE, SET, DELETE
+- **Batch Operations**: Batch creation of nodes and edges
+- **Data Loading**: Load node and edge data from files
+- **Path Queries**: Shortest path, all paths
+- **Advanced Features**: Pagination, transactions, complex queries
+
+#### Graph Database Usage Examples
+
+##### 1. Creating a Graph and Basic Operations
+##### 2. Querying and Analysis
+[Code examples remain unchanged]
+
+##### 3. Path Queries
+[Code examples remain unchanged]
+
+#### Prerequisites
+Before using the graph database functionality, ensure:
+1. PostgreSQL has the Apache AGE extension installed
+2. Execute the following SQL to enable AGE:
+
+### Tips
+If you're deploying PostgreSQL via Docker, you can back up the database like this:
+
+
 
 ### reference
 https://github.com/c-rainstorm/blog/blob/master/java/code-generate/javapoet.zh.md

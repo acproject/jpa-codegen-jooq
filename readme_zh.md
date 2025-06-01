@@ -34,10 +34,10 @@ gradle compileJava
 ```shell
 # Install it locally using Maven
 mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.2.3-all.jar  \
+-Dfile=build/libs/jpa-codegen-jooq-0.3.0-all.jar  \
 -DgroupId=com.owiseman \
 -DartifactId=jpa-codegen-jooq \
--Dversion=0.2.3 \
+-Dversion=0.3.0 \
 -Dpackaging=jar \
 -DgeneratePom=true
 ```
@@ -188,6 +188,109 @@ import com.owiseman.jpa.cache.client;
         }
     }
 ```
+
+## 新增Apache AGE图数据库支持 🚀
+项目现已支持Apache AGE图数据库操作，可以通过JSON DSL进行各种图数据库操作。
+
+### 支持的图数据库操作
+- **图管理**: 创建图、删除图、获取图统计信息
+- **标签管理**: 创建节点标签、创建边标签
+- **Cypher查询**: CREATE、MATCH、MERGE、SET、DELETE操作
+- **批量操作**: 批量创建节点和边
+- **数据加载**: 从文件加载节点和边数据
+- **路径查询**: 最短路径、所有路径查询
+- **高级功能**: 支持分页、事务、复杂查询
+
+### 图数据库使用示例
+
+#### 1. 创建图和基本操作
+```java
+// 创建图
+String createGraphJson = """
+    {
+      "operation": "create_graph",
+      "graph_name": "social_network",
+      "use_transaction": false
+    }
+    """;
+TableAndDataUtil.processRequest(dslContext, createGraphJson);
+
+// 创建节点
+String createNodeJson = """
+    {
+      "operation": "cypher_create",
+      "graph_name": "social_network",
+      "cypher": "CREATE (alice:Person {name: 'Alice', age: 30}) RETURN alice",
+      "use_transaction": true
+    }
+    """;
+DataRecord result = TableAndDataUtil.processRequest(dslContext, createNodeJson);
+```
+
+#### 2. 查询和分析
+```java
+// 查询节点（支持分页）
+String queryJson = """
+    {
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person) WHERE p.age > 25 RETURN p",
+      "pagination": {
+        "page": 1,
+        "pageSize": 10
+      },
+      "use_transaction": false
+    }
+    """;
+
+// 朋友推荐算法
+String recommendJson = """
+    {
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (me:Person {name: 'Alice'})-[:KNOWS]->(friend)-[:KNOWS]->(recommended) WHERE recommended <> me AND NOT (me)-[:KNOWS]->(recommended) RETURN DISTINCT recommended.name",
+      "use_transaction": false
+    }
+    """;
+```
+
+#### 3. 路径查询
+```java
+// 查找最短路径
+String shortestPathJson = """
+    {
+      "operation": "shortest_path",
+      "graph_name": "social_network",
+      "start_node": {
+        "label": "Person",
+        "properties": {"name": "Alice"}
+      },
+      "end_node": {
+        "label": "Person",
+        "properties": {"name": "Bob"}
+      },
+      "relationship": "KNOWS"
+    }
+    """;
+```
+
+### 前置条件
+使用图数据库功能前，请确保：
+1. PostgreSQL数据库已安装Apache AGE扩展
+2. 执行以下SQL启用AGE：
+```sql
+CREATE EXTENSION IF NOT EXISTS age;
+LOAD 'age';
+SET search_path TO ag_catalog, "$user", public;
+```
+
+### 详细文档
+完整的图数据库操作指南请参考：[docs/graph_database_usage.md](docs/graph_database_usage.md)
+
+示例文件：
+- `examples/json/graph_operations.json` - 完整功能演示
+- `examples/json/simple_graph_demo.json` - 简单操作示例
+- `examples/age_test.sql` - SQL测试脚本
 
 
 ### 将要实现的功能

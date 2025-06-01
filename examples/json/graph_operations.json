@@ -1,0 +1,171 @@
+{
+  "examples": [
+    {
+      "description": "创建图数据库",
+      "operation": "create_graph",
+      "graph_name": "social_network",
+      "use_transaction": false
+    },
+    {
+      "description": "创建节点标签",
+      "operation": "create_vertex_label",
+      "graph_name": "social_network",
+      "label": "Person",
+      "use_transaction": false
+    },
+    {
+      "description": "创建边标签",
+      "operation": "create_edge_label",
+      "graph_name": "social_network",
+      "label": "KNOWS",
+      "use_transaction": false
+    },
+    {
+      "description": "创建单个节点",
+      "operation": "cypher_create",
+      "graph_name": "social_network",
+      "cypher": "CREATE (alice:Person {name: 'Alice', age: 30, city: 'Beijing'}) RETURN alice",
+      "use_transaction": true
+    },
+    {
+      "description": "创建多个节点",
+      "operation": "cypher_create",
+      "graph_name": "social_network",
+      "cypher": "CREATE (bob:Person {name: 'Bob', age: 25, city: 'Shanghai'}), (charlie:Person {name: 'Charlie', age: 35, city: 'Guangzhou'}) RETURN bob, charlie",
+      "use_transaction": true
+    },
+    {
+      "description": "查询所有Person节点",
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person) RETURN p",
+      "pagination": {
+        "page": 1,
+        "pageSize": 10
+      },
+      "use_transaction": false
+    },
+    {
+      "description": "根据属性查询节点",
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person) WHERE p.age > 25 RETURN p.name, p.age, p.city",
+      "use_transaction": false
+    },
+    {
+      "description": "创建关系边",
+      "operation": "cypher_create",
+      "graph_name": "social_network",
+      "cypher": "MATCH (alice:Person {name: 'Alice'}), (bob:Person {name: 'Bob'}) CREATE (alice)-[r:KNOWS {since: '2020-01-01', strength: 'strong'}]->(bob) RETURN r",
+      "use_transaction": true
+    },
+    {
+      "description": "MERGE操作 - 如果不存在则创建",
+      "operation": "cypher_merge",
+      "graph_name": "social_network",
+      "cypher": "MERGE (david:Person {name: 'David'}) ON CREATE SET david.age = 28, david.city = 'Shenzhen' RETURN david",
+      "use_transaction": true
+    },
+    {
+      "description": "更新节点属性",
+      "operation": "cypher_set",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person {name: 'Alice'}) SET p.age = 31, p.last_updated = timestamp() RETURN p",
+      "use_transaction": true
+    },
+    {
+      "description": "批量创建节点",
+      "operation": "batch_create_nodes",
+      "graph_name": "social_network",
+      "label": "Person",
+      "nodes": [
+        {"name": "Eva", "age": 29, "city": "Hangzhou"},
+        {"name": "Frank", "age": 32, "city": "Nanjing"},
+        {"name": "Grace", "age": 27, "city": "Wuhan"}
+      ],
+      "use_transaction": true
+    },
+    {
+      "description": "查询关系路径",
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (a:Person)-[r:KNOWS]->(b:Person) RETURN a.name, r.since, b.name",
+      "use_transaction": false
+    },
+    {
+      "description": "查找最短路径",
+      "operation": "shortest_path",
+      "graph_name": "social_network",
+      "start_node": {
+        "label": "Person",
+        "properties": {"name": "Alice"}
+      },
+      "end_node": {
+        "label": "Person", 
+        "properties": {"name": "Charlie"}
+      },
+      "relationship": "KNOWS"
+    },
+    {
+      "description": "查找所有路径",
+      "operation": "all_paths",
+      "graph_name": "social_network",
+      "start_node": {
+        "label": "Person",
+        "properties": {"name": "Alice"}
+      },
+      "end_node": {
+        "label": "Person",
+        "properties": {"name": "David"}
+      },
+      "max_depth": 3
+    },
+    {
+      "description": "复杂查询 - 朋友的朋友",
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person {name: 'Alice'})-[:KNOWS*1..2]->(friend:Person) WHERE friend.name <> 'Alice' RETURN DISTINCT friend.name, friend.age",
+      "use_transaction": false
+    },
+    {
+      "description": "聚合查询 - 统计每个城市的人数",
+      "operation": "cypher_match",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person) RETURN p.city, count(p) as person_count ORDER BY person_count DESC",
+      "use_transaction": false
+    },
+    {
+      "description": "删除特定节点",
+      "operation": "cypher_delete",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person {name: 'Frank'}) DELETE p",
+      "use_transaction": true
+    },
+    {
+      "description": "删除关系",
+      "operation": "cypher_delete",
+      "graph_name": "social_network",
+      "cypher": "MATCH (a:Person)-[r:KNOWS]->(b:Person) WHERE a.name = 'Alice' AND b.name = 'Bob' DELETE r",
+      "use_transaction": true
+    },
+    {
+      "description": "获取图统计信息",
+      "operation": "graph_stats",
+      "graph_name": "social_network"
+    },
+    {
+      "description": "执行自定义Cypher查询",
+      "operation": "execute_cypher",
+      "graph_name": "social_network",
+      "cypher": "MATCH (p:Person) WHERE p.age BETWEEN 25 AND 35 RETURN p.name, p.age, p.city ORDER BY p.age",
+      "use_transaction": false
+    },
+    {
+      "description": "删除图数据库",
+      "operation": "drop_graph",
+      "graph_name": "social_network",
+      "cascade": true,
+      "use_transaction": false
+    }
+  ]
+} 

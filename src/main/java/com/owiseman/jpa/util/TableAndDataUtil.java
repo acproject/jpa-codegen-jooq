@@ -115,6 +115,60 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "drop_index" -> {
                 return getInstance().dropIndex(dslContext, rootNode);
             }
+            
+            // =============== Apache AGE 图数据库操作 ===============
+            case "create_graph" -> {
+                return GraphDatabaseUtil.getInstance().createGraph(dslContext, rootNode);
+            }
+            case "drop_graph" -> {
+                return GraphDatabaseUtil.getInstance().dropGraph(dslContext, rootNode);
+            }
+            case "graph_stats" -> {
+                return GraphDatabaseUtil.getInstance().getGraphStats(dslContext, rootNode);
+            }
+            case "create_vertex_label" -> {
+                return GraphDatabaseUtil.getInstance().createVertexLabel(dslContext, rootNode);
+            }
+            case "create_edge_label" -> {
+                return GraphDatabaseUtil.getInstance().createEdgeLabel(dslContext, rootNode);
+            }
+            case "cypher_create" -> {
+                return GraphDatabaseUtil.getInstance().cypherCreate(dslContext, rootNode);
+            }
+            case "cypher_match" -> {
+                return GraphDatabaseUtil.getInstance().cypherMatch(dslContext, rootNode);
+            }
+            case "cypher_merge" -> {
+                return GraphDatabaseUtil.getInstance().cypherMerge(dslContext, rootNode);
+            }
+            case "cypher_delete" -> {
+                return GraphDatabaseUtil.getInstance().cypherDelete(dslContext, rootNode);
+            }
+            case "cypher_set" -> {
+                return GraphDatabaseUtil.getInstance().cypherSet(dslContext, rootNode);
+            }
+            case "batch_create_nodes" -> {
+                return GraphDatabaseUtil.getInstance().batchCreateNodes(dslContext, rootNode);
+            }
+            case "batch_create_edges" -> {
+                return GraphDatabaseUtil.getInstance().batchCreateEdges(dslContext, rootNode);
+            }
+            case "load_vertices_from_file" -> {
+                return GraphDatabaseUtil.getInstance().loadVerticesFromFile(dslContext, rootNode);
+            }
+            case "load_edges_from_file" -> {
+                return GraphDatabaseUtil.getInstance().loadEdgesFromFile(dslContext, rootNode);
+            }
+            case "shortest_path" -> {
+                return GraphDatabaseUtil.getInstance().findShortestPath(dslContext, rootNode);
+            }
+            case "all_paths" -> {
+                return GraphDatabaseUtil.getInstance().findAllPaths(dslContext, rootNode);
+            }
+            case "execute_cypher" -> {
+                return GraphDatabaseUtil.getInstance().executeCypher(dslContext, rootNode);
+            }
+            
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
     }

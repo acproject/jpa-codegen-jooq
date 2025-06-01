@@ -1,0 +1,75 @@
+{
+  "operation": "create_graph",
+  "graph_name": "demo_graph",
+  "use_transaction": false
+}
+
+---
+
+{
+  "operation": "create_vertex_label",
+  "graph_name": "demo_graph", 
+  "label": "User",
+  "use_transaction": false
+}
+
+---
+
+{
+  "operation": "create_edge_label",
+  "graph_name": "demo_graph",
+  "label": "FOLLOWS",
+  "use_transaction": false
+}
+
+---
+
+{
+  "operation": "cypher_create",
+  "graph_name": "demo_graph",
+  "cypher": "CREATE (user1:User {id: 1, name: '张三', email: 'zhangsan@example.com'}) RETURN user1",
+  "use_transaction": true
+}
+
+---
+
+{
+  "operation": "cypher_create", 
+  "graph_name": "demo_graph",
+  "cypher": "CREATE (user2:User {id: 2, name: '李四', email: 'lisi@example.com'}) RETURN user2",
+  "use_transaction": true
+}
+
+---
+
+{
+  "operation": "cypher_create",
+  "graph_name": "demo_graph", 
+  "cypher": "MATCH (a:User {name: '张三'}), (b:User {name: '李四'}) CREATE (a)-[r:FOLLOWS {created_at: timestamp()}]->(b) RETURN r",
+  "use_transaction": true
+}
+
+---
+
+{
+  "operation": "cypher_match",
+  "graph_name": "demo_graph",
+  "cypher": "MATCH (u:User) RETURN u.id, u.name, u.email",
+  "use_transaction": false
+}
+
+---
+
+{
+  "operation": "cypher_match",
+  "graph_name": "demo_graph",
+  "cypher": "MATCH (a:User)-[r:FOLLOWS]->(b:User) RETURN a.name as follower, b.name as following, r.created_at",
+  "use_transaction": false
+}
+
+---
+
+{
+  "operation": "graph_stats",
+  "graph_name": "demo_graph"
+} 
