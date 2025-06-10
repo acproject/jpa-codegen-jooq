@@ -169,6 +169,38 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 return GraphDatabaseUtil.getInstance().executeCypher(dslContext, rootNode);
             }
             
+            // =============== JSON/JSONB 数据操作 ===============
+            case "json_path_query" -> {
+                return JsonDataUtil.getInstance().queryJsonPath(dslContext, rootNode);
+            }
+            case "json_contains_query" -> {
+                return JsonDataUtil.getInstance().queryJsonContains(dslContext, rootNode);
+            }
+            case "json_keys_query" -> {
+                return JsonDataUtil.getInstance().queryJsonKeys(dslContext, rootNode);
+            }
+            case "json_path_update" -> {
+                return JsonDataUtil.getInstance().updateJsonPath(dslContext, rootNode);
+            }
+            case "json_keys_modify" -> {
+                return JsonDataUtil.getInstance().modifyJsonKeys(dslContext, rootNode);
+            }
+            case "json_function" -> {
+                return JsonDataUtil.getInstance().executeJsonFunction(dslContext, rootNode);
+            }
+            case "json_convert" -> {
+                return JsonDataUtil.getInstance().convertToJson(dslContext, rootNode);
+            }
+            case "json_parse" -> {
+                return JsonDataUtil.getInstance().parseJsonData(dslContext, rootNode);
+            }
+            case "json_array_aggregate" -> {
+                return JsonDataUtil.getInstance().aggregateJsonArray(dslContext, rootNode);
+            }
+            case "json_object_aggregate" -> {
+                return JsonDataUtil.getInstance().aggregateJsonObject(dslContext, rootNode);
+            }
+            
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
     }
