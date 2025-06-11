@@ -201,6 +201,47 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 return JsonDataUtil.getInstance().aggregateJsonObject(dslContext, rootNode);
             }
             
+            // =============== 向量数据库操作 ===============
+            case "create_vector_table" -> {
+                return VectorDataUtil.getInstance().createVectorTable(dslContext, rootNode);
+            }
+            case "insert_vector_data" -> {
+                return VectorDataUtil.getInstance().insertVectorData(dslContext, rootNode);
+            }
+            case "insert_batch_vector_data" -> {
+                return VectorDataUtil.getInstance().insertBatchVectorData(dslContext, rootNode);
+            }
+            case "create_vector_index" -> {
+                return VectorDataUtil.getInstance().createVectorIndex(dslContext, rootNode);
+            }
+            case "drop_vector_index" -> {
+                return VectorDataUtil.getInstance().dropVectorIndex(dslContext, rootNode);
+            }
+            case "vector_l2_search" -> {
+                return VectorDataUtil.getInstance().vectorL2Search(dslContext, rootNode);
+            }
+            case "vector_cosine_search" -> {
+                return VectorDataUtil.getInstance().vectorCosineSearch(dslContext, rootNode);
+            }
+            case "vector_inner_product_search" -> {
+                return VectorDataUtil.getInstance().vectorInnerProductSearch(dslContext, rootNode);
+            }
+            case "vector_aggregation" -> {
+                return VectorDataUtil.getInstance().vectorAggregation(dslContext, rootNode);
+            }
+            case "vector_dimension_analysis" -> {
+                return VectorDataUtil.getInstance().vectorDimensionAnalysis(dslContext, rootNode);
+            }
+            case "normalize_vector" -> {
+                return VectorDataUtil.getInstance().normalizeVector(dslContext, rootNode);
+            }
+            case "vector_math" -> {
+                return VectorDataUtil.getInstance().vectorMath(dslContext, rootNode);
+            }
+            case "convert_vector_type" -> {
+                return VectorDataUtil.getInstance().convertVectorType(dslContext, rootNode);
+            }
+            
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
     }
