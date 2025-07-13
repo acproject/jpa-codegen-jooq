@@ -2,6 +2,20 @@
 #include <iostream>
 #include <sstream>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#ifdef __linux__
+#include <sys/epoll.h>
+#else
+#include <sys/event.h>
+#endif
+#endif
+
 TcpServer::TcpServer(const std::string& configFile)
     : port(6379), // 默认端口
 #ifndef _WIN32
@@ -199,9 +213,13 @@ void TcpServer::serverLoop() {
 }
 
 void TcpServer::handleClient(int clientSocket) {
-  // 设置非阻塞模式
+#ifndef _WIN32
+  // 设置非阻塞模式 (仅在Unix/Linux平台)
   int flags = fcntl(clientSocket, F_GETFL, 0);
-  fcntl(clientSocket, F_SETFL, flags | O_NONBLOCK);
+  if (flags >= 0) {
+    fcntl(clientSocket, F_SETFL, flags | O_NONBLOCK);
+  }
+#endif
   
   // 创建客户端状态
   ClientState state;
@@ -212,7 +230,11 @@ void TcpServer::handleClient(int clientSocket) {
   
   while (running) {
     // 读取客户端数据
+#ifdef _WIN32
+    int bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+#else
     ssize_t bytesRead = read(clientSocket, buffer, sizeof(buffer));
+#endif
     
     if (bytesRead > 0) {
       // 将读取的数据添加到缓冲区
@@ -242,7 +264,13 @@ void TcpServer::handleClient(int clientSocket) {
         // 清空缓冲区
         state.buffer.clear();
       }
-    } else if (bytesRead == 0 || (bytesRead < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
+    } else if (bytesRead == 0 || (bytesRead < 0 && 
+#ifdef _WIN32
+        WSAGetLastError() != WSAEWOULDBLOCK
+#else
+        errno != EAGAIN && errno != EWOULDBLOCK
+#endif
+    )) {
       // 连接关闭或出错
       break;
     }
@@ -252,7 +280,7 @@ void TcpServer::handleClient(int clientSocket) {
   }
 
   // 关闭客户端连接
-  close(clientSocket);
+  CLOSE_SOCKET(clientSocket);
 }
 
 void TcpServer::cleanupExpiredKeys() { dataStore.cleanExpiredKeys(); }
@@ -531,9 +559,10 @@ void TcpServer::setup_server() {
 
     // 添加 SO_REUSEADDR 选项
     int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt)) < 0) {
         std::cerr << "Failed to set socket options: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
@@ -541,13 +570,15 @@ void TcpServer::setup_server() {
     int flags = fcntl(server_fd, F_GETFL, 0);
     if (flags < 0) {
         std::cerr << "Failed to get socket flags: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
     if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
         std::cerr << "Failed to set non-blocking mode: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
@@ -563,14 +594,16 @@ void TcpServer::setup_server() {
 
     if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0) {
         std::cerr << "Failed to bind port: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
     // 监听
     if (listen(server_fd, SOMAXCONN) < 0) {
         std::cerr << "Failed to listen: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
@@ -581,7 +614,8 @@ void TcpServer::setup_server() {
     event_fd = epoll_create1(0);
     if (event_fd < 0) {
         std::cerr << "Failed to create epoll instance: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
@@ -591,7 +625,9 @@ void TcpServer::setup_server() {
     if (epoll_ctl(event_fd, EPOLL_CTL_ADD, server_fd, &ev) < 0) {
         std::cerr << "Failed to add server socket to epoll: " << strerror(errno) << std::endl;
         close(event_fd);
-        close(server_fd);
+        event_fd = -1;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 #else
@@ -599,7 +635,8 @@ void TcpServer::setup_server() {
     event_fd = kqueue();
     if (event_fd < 0) {
         std::cerr << "Failed to create kqueue instance: " << strerror(errno) << std::endl;
-        close(server_fd);
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 
@@ -608,7 +645,9 @@ void TcpServer::setup_server() {
     if (kevent(event_fd, &ev, 1, nullptr, 0, nullptr) < 0) {
         std::cerr << "Failed to add server socket to kqueue: " << strerror(errno) << std::endl;
         close(event_fd);
-        close(server_fd);
+        event_fd = -1;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
         return;
     }
 #endif
@@ -688,10 +727,10 @@ void TcpServer::event_loop() {
     }
 
     // 关闭服务器套接字
-    if (server_fd >= 0) {
+    if (server_fd != INVALID_SOCKET_VALUE) {
         std::cout << "Closing server socket..." << std::endl;
-        close(server_fd);
-        server_fd = -1;
+        CLOSE_SOCKET(server_fd);
+        server_fd = INVALID_SOCKET_VALUE;
     }
 
     // 关闭事件处理器
@@ -733,10 +772,20 @@ void TcpServer::accept_connection() {
 void TcpServer::handle_client(int fd) {
     auto &state = clients[fd];
     char buffer[4096];
+#ifdef _WIN32
+    int count = recv(fd, buffer, sizeof(buffer), 0);
+#else
     ssize_t count = read(fd, buffer, sizeof(buffer));
+#endif
 
     if (count <= 0) {
-        if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+        if (count == 0 || (
+#ifdef _WIN32
+            WSAGetLastError() != WSAEWOULDBLOCK
+#else
+            errno != EAGAIN && errno != EWOULDBLOCK
+#endif
+        )) {
             close_client(fd);
             return;
         }
@@ -758,7 +807,7 @@ void TcpServer::close_client(int fd) {
 
     clients.erase(fd);
     shutdown(fd, SHUT_RDWR);
-    close(fd);
+    CLOSE_SOCKET(fd);
 }
 
 void TcpServer::process_buffer(int fd, ClientState &state) {
@@ -771,7 +820,11 @@ void TcpServer::process_buffer(int fd, ClientState &state) {
 }
 
 void TcpServer::send_response(int fd, const std::string &resp) {
+#ifdef _WIN32
+    send(fd, resp.c_str(), resp.size(), 0);
+#else
     write(fd, resp.c_str(), resp.size());
+#endif
 }
 #endif
 
