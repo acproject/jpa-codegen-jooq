@@ -1,0 +1,38 @@
+[Unit]
+Description=MiniCache Server - High Performance Memory Cache Server
+Documentation=https://github.com/minicache/minicache
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=minicache
+Group=minicache
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/mini_cache_server
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=0
+KillSignal=SIGINT
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/minicache /var/log/minicache
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=65536
+
+# Working directory
+WorkingDirectory=/var/lib/minicache
+
+# Environment
+Environment=MINICACHE_CONFIG=/etc/minicache/mcs.conf
+
+[Install]
+WantedBy=multi-user.target

@@ -295,7 +295,7 @@ SET search_path TO ag_catalog, "$user", public;
 
 ### 将要实现的功能
 * [ ] 内置消息队列功能
-* [ ] 轻量级内置缓存功能 
+* [x] 轻量级内置缓存功能 -- 可以在Linux， Mac Os和Windows上使用
 
 ### 小技巧
 如果你是docker部署的Postgres数据库可以这样来备份数据库
