@@ -101,16 +101,28 @@ void TcpServer::start() {
     // 移除这里的 setup_server() 调用，因为已经在构造函数中调用过了
     
     // 检查服务器是否设置成功
+#ifdef _WIN32
+    if (server_fd == INVALID_SOCKET_VALUE) {
+        std::cerr << "Server setup failed, unable to start" << std::endl;
+        running = false;
+        return;
+    }
+#else
     if (server_fd < 0 || event_fd < 0) {
         std::cerr << "Server setup failed, unable to start" << std::endl;
         running = false;
         return;
     }
+#endif
     
     std::cout << "Server setup successful, starting event loop..." << std::endl;
     
     // 运行事件循环
+#ifdef _WIN32
+    handle_client_windows();
+#else
     event_loop();
+#endif
     
     std::cout << "Event loop has exited" << std::endl;
 }
@@ -476,11 +488,12 @@ void TcpServer::handle_client_windows() {
             client_state.buffer.append(client_state.recvBuffer, bytes_transferred);
             
             // 解析并处理命令
-            std::string command = client_state.buffer;
-            process_command(client_fd, command);
-            
-            // 清空缓冲区，准备下一次读取
-            client_state.buffer.clear();
+            auto commands = RespParser::parse(client_state.buffer);
+            if (!commands.empty()) {
+                std::string response = command_handler(commands);
+                send(client_fd, response.c_str(), response.length(), 0);
+                client_state.buffer.clear();
+            }
             ZeroMemory(&client_state.overlapped, sizeof(WSAOVERLAPPED));
             
             // 开始下一次异步读取
@@ -506,7 +519,260 @@ void TcpServer::handle_client_windows() {
     }
 }
 #else
-// 保留现有的 setup_server 和 handle_client 方法
+// Unix/Linux 平台实现
+void TcpServer::setup_server() {
+    std::cout << "Setting up server..." << std::endl;
+    // 创建socket
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        std::cerr << "Failed to create socket: " << strerror(errno) << std::endl;
+        return;
+    }
+
+    // 添加 SO_REUSEADDR 选项
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        std::cerr << "Failed to set socket options: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    // 设置非阻塞模式
+    int flags = fcntl(server_fd, F_GETFL, 0);
+    if (flags < 0) {
+        std::cerr << "Failed to get socket flags: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        std::cerr << "Failed to set non-blocking mode: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    // 绑定端口
+    sockaddr_in addr = {};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    if (host == "0.0.0.0") {
+        addr.sin_addr.s_addr = INADDR_ANY;
+    } else {
+        inet_pton(AF_INET, host.c_str(), &addr.sin_addr);
+    }
+
+    if (bind(server_fd, (sockaddr *)&addr, sizeof(addr)) < 0) {
+        std::cerr << "Failed to bind port: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    // 监听
+    if (listen(server_fd, SOMAXCONN) < 0) {
+        std::cerr << "Failed to listen: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    std::cout << "Server socket setup complete, listening on port " << port << std::endl;
+
+#if defined(__linux__)
+    // 创建epoll实例
+    event_fd = epoll_create1(0);
+    if (event_fd < 0) {
+        std::cerr << "Failed to create epoll instance: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    epoll_event ev{};
+    ev.events = EPOLLIN;
+    ev.data.fd = server_fd;
+    if (epoll_ctl(event_fd, EPOLL_CTL_ADD, server_fd, &ev) < 0) {
+        std::cerr << "Failed to add server socket to epoll: " << strerror(errno) << std::endl;
+        close(event_fd);
+        close(server_fd);
+        return;
+    }
+#else
+    // 创建kqueue实例
+    event_fd = kqueue();
+    if (event_fd < 0) {
+        std::cerr << "Failed to create kqueue instance: " << strerror(errno) << std::endl;
+        close(server_fd);
+        return;
+    }
+
+    struct kevent ev;
+    EV_SET(&ev, server_fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
+    if (kevent(event_fd, &ev, 1, nullptr, 0, nullptr) < 0) {
+        std::cerr << "Failed to add server socket to kqueue: " << strerror(errno) << std::endl;
+        close(event_fd);
+        close(server_fd);
+        return;
+    }
+#endif
+
+    std::cout << "Event handler setup complete" << std::endl;
+}
+
+void TcpServer::event_loop() {
+    const int MAX_EVENTS = 64;
+    std::cout << "Starting event loop..." << std::endl;
+
+#if defined(__linux__)
+    epoll_event events[MAX_EVENTS];
+    
+    while (running) {
+        int n = epoll_wait(event_fd, events, MAX_EVENTS, 1000); // 1秒超时
+        
+        if (!running) {
+            std::cout << "Received stop signal, exiting event loop" << std::endl;
+            break;
+        }
+        
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::cerr << "epoll_wait error: " << strerror(errno) << std::endl;
+            break;
+        }
+        
+        for (int i = 0; i < n; ++i) {
+            if (events[i].data.fd == server_fd) {
+                accept_connection();
+            } else {
+                handle_client(events[i].data.fd);
+            }
+        }
+    }
+#else
+    struct kevent events[MAX_EVENTS];
+
+    while (running) {
+        struct timespec timeout;
+        timeout.tv_sec = 1;
+        timeout.tv_nsec = 0;
+
+        int n = kevent(event_fd, nullptr, 0, events, MAX_EVENTS, &timeout);
+
+        if (!running) {
+            std::cout << "Received stop signal, exiting event loop" << std::endl;
+            break;
+        }
+
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            std::cerr << "kevent error: " << strerror(errno) << std::endl;
+            break;
+        }
+
+        for (int i = 0; i < n; ++i) {
+            if (events[i].ident == server_fd) {
+                accept_connection();
+            } else {
+                handle_client(events[i].ident);
+            }
+        }
+    }
+#endif
+
+    std::cout << "Closing all connections..." << std::endl;
+
+    // 关闭所有客户端连接
+    for (const auto &client : clients) {
+        close_client(client.first);
+    }
+
+    // 关闭服务器套接字
+    if (server_fd >= 0) {
+        std::cout << "Closing server socket..." << std::endl;
+        close(server_fd);
+        server_fd = -1;
+    }
+
+    // 关闭事件处理器
+    if (event_fd >= 0) {
+        std::cout << "Closing event handler..." << std::endl;
+        close(event_fd);
+        event_fd = -1;
+    }
+
+    std::cout << "Event loop has exited" << std::endl;
+}
+
+void TcpServer::add_to_epoll(int fd) {
+#if defined(__linux__)
+    epoll_event ev{};
+    ev.events = EPOLLIN;
+    ev.data.fd = fd;
+    epoll_ctl(event_fd, EPOLL_CTL_ADD, fd, &ev);
+#else
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_READ, EV_ADD, 0, 0, nullptr);
+    kevent(event_fd, &ev, 1, nullptr, 0, nullptr);
+#endif
+}
+
+void TcpServer::accept_connection() {
+    sockaddr_in client_addr = {};
+    socklen_t addr_len = sizeof(client_addr);
+    int client_fd = accept(server_fd, (sockaddr *)&client_addr, &addr_len);
+
+    if (client_fd > 0) {
+        int flags = fcntl(client_fd, F_GETFL, 0);
+        fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+        add_to_epoll(client_fd);
+        clients[client_fd] = ClientState();
+    }
+}
+
+void TcpServer::handle_client(int fd) {
+    auto &state = clients[fd];
+    char buffer[4096];
+    ssize_t count = read(fd, buffer, sizeof(buffer));
+
+    if (count <= 0) {
+        if (count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+            close_client(fd);
+            return;
+        }
+        return;
+    }
+
+    state.buffer.append(buffer, count);
+    process_buffer(fd, state);
+}
+
+void TcpServer::close_client(int fd) {
+#if defined(__linux__)
+    epoll_ctl(event_fd, EPOLL_CTL_DEL, fd, nullptr);
+#else
+    struct kevent ev;
+    EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, nullptr);
+    kevent(event_fd, &ev, 1, nullptr, 0, nullptr);
+#endif
+
+    clients.erase(fd);
+    shutdown(fd, SHUT_RDWR);
+    close(fd);
+}
+
+void TcpServer::process_buffer(int fd, ClientState &state) {
+    auto cmds = RespParser::parse(state.buffer);
+    if (!cmds.empty()) {
+        auto response = command_handler(cmds);
+        send_response(fd, response);
+        state.buffer.clear();
+    }
+}
+
+void TcpServer::send_response(int fd, const std::string &resp) {
+    write(fd, resp.c_str(), resp.size());
+}
 #endif
 
 
