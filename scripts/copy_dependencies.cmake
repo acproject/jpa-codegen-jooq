@@ -384,30 +384,53 @@ if(CMAKE_SCRIPT_MODE_FILE)
     # 脚本模式运行
     copy_dependencies()
 else()
-    # 作为模块包含时，定义函数供外部调用
-    function(copy_target_dependencies target)
-        get_target_property(target_type ${target} TYPE)
-        if(target_type STREQUAL "EXECUTABLE")
-            get_target_property(target_location ${target} LOCATION)
-            if(NOT target_location)
-                set(target_location "$<TARGET_FILE:${target}>")
-            endif()
-            
-            # 创建自定义目标
-            add_custom_target(copy_${target}_dependencies
+#    # 作为模块包含时，定义函数供外部调用
+#    function(copy_target_dependencies target)
+#        get_target_property(target_type ${target} TYPE)
+#        if(target_type STREQUAL "EXECUTABLE")
+#            get_target_property(target_location ${target} LOCATION)
+#            if(NOT target_location)
+#                set(target_location "$<TARGET_FILE:${target}>")
+#            endif()
+#
+#            # 创建自定义目标
+#            add_custom_target(copy_${target}_dependencies
+#                COMMAND ${CMAKE_COMMAND}
+#                    -DTARGET_EXECUTABLE="${target_location}"
+#                    -DOUTPUT_DIRECTORY="${CMAKE_BINARY_DIR}/dlls"
+#                    -DVERBOSE_OUTPUT=ON
+#                    -DFORCE_COPY=OFF
+#                    -DEXCLUDE_SYSTEM_DLLS=ON
+#                    -P "${CMAKE_CURRENT_LIST_FILE}"
+#                DEPENDS ${target}
+#                COMMENT "复制 ${target} 的依赖文件"
+#                VERBATIM
+#            )
+#        else()
+#            message(WARNING "${target} 不是可执行文件目标")
+#        endif()
+#    endfunction()
+function(copy_target_dependencies target)
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "EXECUTABLE")
+        # 使用生成器表达式 $<TARGET_FILE> 替代 LOCATION
+        set(target_location "$<TARGET_FILE:${target}>")
+
+        # 创建自定义目标
+        add_custom_target(copy_${target}_dependencies
                 COMMAND ${CMAKE_COMMAND}
-                    -DTARGET_EXECUTABLE="${target_location}"
-                    -DOUTPUT_DIRECTORY="${CMAKE_BINARY_DIR}/dlls"
-                    -DVERBOSE_OUTPUT=ON
-                    -DFORCE_COPY=OFF
-                    -DEXCLUDE_SYSTEM_DLLS=ON
-                    -P "${CMAKE_CURRENT_LIST_FILE}"
+                -DTARGET_EXECUTABLE="${target_location}"
+                -DOUTPUT_DIRECTORY="${CMAKE_BINARY_DIR}/dlls"
+                -DVERBOSE_OUTPUT=ON
+                -DFORCE_COPY=OFF
+                -DEXCLUDE_SYSTEM_DLLS=ON
+                -P "${CMAKE_CURRENT_LIST_FILE}"
                 DEPENDS ${target}
                 COMMENT "复制 ${target} 的依赖文件"
                 VERBATIM
-            )
-        else()
-            message(WARNING "${target} 不是可执行文件目标")
-        endif()
-    endfunction()
+        )
+    else()
+        message(WARNING "${target} 不是可执行文件目标")
+    endif()
+endfunction()
 endif()
