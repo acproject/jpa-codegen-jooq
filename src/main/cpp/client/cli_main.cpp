@@ -45,14 +45,18 @@
 #ifdef _WIN32
     // Windows 平台下的 socket 相关定义
     // 删除这里的 close 宏定义，避免与 closesocket 冲突
-    typedef int ssize_t;
+    #ifndef _SSIZE_T_DEFINED
+        #ifndef _SSIZE_T_
+            typedef int ssize_t;
+        #endif
+    #endif
 #else
     #include <sys/socket.h>
     #include <unistd.h>
 #endif
 #include <vector>
 
-#include "RespParser.hpp"
+#include "../server/RespParser.hpp"
 
 class MiniCacheClient {
 public:
