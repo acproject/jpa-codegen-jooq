@@ -34,10 +34,10 @@ gradle compileJava
 ```shell
 # Install it locally using Maven
 mvn install:install-file \
--Dfile=build/libs/jpa-codegen-jooq-0.3.0-all.jar  \
+-Dfile=build/libs/jpa-codegen-jooq-0.3.3-all.jar  \
 -DgroupId=com.owiseman \
 -DartifactId=jpa-codegen-jooq \
--Dversion=0.3.0 \
+-Dversion=0.3.3 \
 -Dpackaging=jar \
 -DgeneratePom=true
 ```

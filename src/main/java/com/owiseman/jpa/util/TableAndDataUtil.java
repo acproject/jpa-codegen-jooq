@@ -169,6 +169,56 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 return GraphDatabaseUtil.getInstance().executeCypher(dslContext, rootNode);
             }
             
+            // =============== 高级图分析操作 ===============
+            case "calculate_node_degree" -> {
+                return GraphDatabaseUtil.getInstance().calculateNodeDegree(dslContext, rootNode);
+            }
+            case "find_connected_components" -> {
+                return GraphDatabaseUtil.getInstance().findConnectedComponents(dslContext, rootNode);
+            }
+            case "calculate_centrality" -> {
+                return GraphDatabaseUtil.getInstance().calculateCentrality(dslContext, rootNode);
+            }
+            case "find_triangles" -> {
+                return GraphDatabaseUtil.getInstance().findTriangles(dslContext, rootNode);
+            }
+            case "detect_communities" -> {
+                return GraphDatabaseUtil.getInstance().detectCommunities(dslContext, rootNode);
+            }
+            case "pattern_matching" -> {
+                return GraphDatabaseUtil.getInstance().patternMatching(dslContext, rootNode);
+            }
+            case "query_subgraph" -> {
+                return GraphDatabaseUtil.getInstance().querySubgraph(dslContext, rootNode);
+            }
+            case "aggregate_graph" -> {
+                return GraphDatabaseUtil.getInstance().aggregateGraph(dslContext, rootNode);
+            }
+            
+            // =============== 图数据导入导出操作 ===============
+            case "export_graph_to_json" -> {
+                return GraphDatabaseUtil.getInstance().exportGraphToJson(dslContext, rootNode);
+            }
+            case "import_graph_from_json" -> {
+                return GraphDatabaseUtil.getInstance().importGraphFromJson(dslContext, rootNode);
+            }
+            
+            // =============== 图与向量数据混合操作 ===============
+            case "add_node_embeddings" -> {
+                return GraphDatabaseUtil.getInstance().addNodeEmbeddings(dslContext, rootNode);
+            }
+            case "find_similar_nodes" -> {
+                return GraphDatabaseUtil.getInstance().findSimilarNodes(dslContext, rootNode);
+            }
+            
+            // =============== 图与JSON数据混合操作 ===============
+            case "query_nodes_with_json" -> {
+                return GraphDatabaseUtil.getInstance().queryNodesWithJson(dslContext, rootNode);
+            }
+            case "update_node_json" -> {
+                return GraphDatabaseUtil.getInstance().updateNodeJson(dslContext, rootNode);
+            }
+            
             // =============== JSON/JSONB 数据操作 ===============
             case "json_path_query" -> {
                 return JsonDataUtil.getInstance().queryJsonPath(dslContext, rootNode);

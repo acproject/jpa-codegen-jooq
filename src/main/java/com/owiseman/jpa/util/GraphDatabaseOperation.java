@@ -128,4 +128,209 @@ public interface GraphDatabaseOperation {
      * JSON格式: {"operation": "execute_cypher", "graph_name": "test_graph", "cypher": "...", "use_transaction": true}
      */
     DataRecord executeCypher(DSLContext dslContext, JsonNode rootNode);
-} 
+
+    // =============== 高级图分析操作 ===============
+    
+    /**
+     * 计算节点的度数（入度、出度、总度数）
+     * JSON 格式:
+     * {
+     *   "operation": "node_degree",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "node_properties": {"name": "Alice"},
+     *   "degree_type": "all|in|out",
+     *   "edge_label": "FOLLOWS"
+     * }
+     */
+    DataRecord calculateNodeDegree(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 查找图中的连通分量
+     * JSON 格式:
+     * {
+     *   "operation": "connected_components",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "edge_label": "KNOWS",
+     *   "max_components": 10
+     * }
+     */
+    DataRecord findConnectedComponents(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 计算节点的中心性指标（度中心性、接近中心性、介数中心性）
+     * JSON 格式:
+     * {
+     *   "operation": "centrality_analysis",
+     *   "graph_name": "social_network",
+     *   "centrality_type": "degree|closeness|betweenness",
+     *   "node_label": "Person",
+     *   "edge_label": "KNOWS",
+     *   "limit": 20
+     * }
+     */
+    DataRecord calculateCentrality(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 查找图中的三角形（三元闭包）
+     * JSON 格式:
+     * {
+     *   "operation": "find_triangles",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "edge_label": "KNOWS",
+     *   "limit": 100
+     * }
+     */
+    DataRecord findTriangles(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 社区检测算法（标签传播算法）
+     * JSON 格式:
+     * {
+     *   "operation": "community_detection",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "edge_label": "KNOWS",
+     *   "max_iterations": 10,
+     *   "min_community_size": 3
+     * }
+     */
+    DataRecord detectCommunities(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 图的模式匹配
+     * JSON 格式:
+     * {
+     *   "operation": "pattern_matching",
+     *   "graph_name": "social_network",
+     *   "pattern": "(a:Person)-[:KNOWS]->(b:Person)-[:KNOWS]->(c:Person)",
+     *   "where_conditions": "a.age > 25 AND b.city = 'Beijing'",
+     *   "return_clause": "a.name, b.name, c.name",
+     *   "limit": 50
+     * }
+     */
+    DataRecord patternMatching(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 图的子图查询
+     * JSON 格式:
+     * {
+     *   "operation": "subgraph_query",
+     *   "graph_name": "social_network",
+     *   "center_node": {"label": "Person", "properties": {"name": "Alice"}},
+     *   "max_depth": 2,
+     *   "edge_labels": ["KNOWS", "FOLLOWS"],
+     *   "include_properties": true
+     * }
+     */
+    DataRecord querySubgraph(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 图的聚合统计
+     * JSON 格式:
+     * {
+     *   "operation": "graph_aggregation",
+     *   "graph_name": "social_network",
+     *   "aggregation_type": "node_count|edge_count|avg_degree|density",
+     *   "group_by": "label",
+     *   "filters": {"node_label": "Person", "edge_label": "KNOWS"}
+     * }
+     */
+    DataRecord aggregateGraph(DSLContext dslContext, JsonNode rootNode);
+    
+    // =============== 图数据导入导出操作 ===============
+    
+    /**
+     * 导出图数据为JSON格式
+     * JSON 格式:
+     * {
+     *   "operation": "export_graph_json",
+     *   "graph_name": "social_network",
+     *   "export_format": "cytoscape|d3|networkx",
+     *   "include_properties": true,
+     *   "filters": {"node_labels": ["Person"], "edge_labels": ["KNOWS"]}
+     * }
+     */
+    DataRecord exportGraphToJson(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 从JSON数据导入图
+     * JSON 格式:
+     * {
+     *   "operation": "import_graph_json",
+     *   "graph_name": "social_network",
+     *   "json_data": {...},
+     *   "merge_strategy": "create|merge|replace",
+     *   "batch_size": 1000
+     * }
+     */
+    DataRecord importGraphFromJson(DSLContext dslContext, JsonNode rootNode);
+    
+    // =============== 图与向量数据混合操作 ===============
+    
+    /**
+     * 为图节点添加向量嵌入
+     * JSON 格式:
+     * {
+     *   "operation": "add_node_embeddings",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "embedding_property": "embedding",
+     *   "vector_dimension": 128,
+     *   "embedding_data": [{"node_id": "id1", "vector": [0.1, 0.2, ...]}, ...]
+     * }
+     */
+    DataRecord addNodeEmbeddings(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 基于向量相似度查找相似节点
+     * JSON 格式:
+     * {
+     *   "operation": "find_similar_nodes",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "embedding_property": "embedding",
+     *   "query_vector": [0.1, 0.2, 0.3, ...],
+     *   "similarity_metric": "cosine|l2|inner_product",
+     *   "limit": 10,
+     *   "threshold": 0.8
+     * }
+     */
+    DataRecord findSimilarNodes(DSLContext dslContext, JsonNode rootNode);
+    
+    // =============== 图与JSON数据混合操作 ===============
+    
+    /**
+     * 查询包含特定JSON属性的节点
+     * JSON 格式:
+     * {
+     *   "operation": "query_nodes_with_json",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "json_property": "metadata",
+     *   "json_path": "$.profile.interests",
+     *   "json_value": "technology",
+     *   "json_operator": "contains|equals|exists"
+     * }
+     */
+    DataRecord queryNodesWithJson(DSLContext dslContext, JsonNode rootNode);
+    
+    /**
+     * 更新节点的JSON属性
+     * JSON 格式:
+     * {
+     *   "operation": "update_node_json",
+     *   "graph_name": "social_network",
+     *   "node_label": "Person",
+     *   "node_filter": {"name": "Alice"},
+     *   "json_property": "metadata",
+     *   "json_updates": [
+     *     {"path": "$.profile.age", "value": 30, "operation": "set"},
+     *     {"path": "$.profile.interests", "value": "AI", "operation": "append"}
+     *   ]
+     * }
+     */
+    DataRecord updateNodeJson(DSLContext dslContext, JsonNode rootNode);
+}

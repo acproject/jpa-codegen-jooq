@@ -621,4 +621,838 @@ public class GraphDatabaseUtil implements GraphDatabaseOperation {
         query.append(") RETURN p");
         return query.toString();
     }
-} 
+
+    // =============== 高级图分析操作实现 ===============
+
+    @Override
+    public DataRecord calculateNodeDegree(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        JsonNode nodeProperties = rootNode.get("node_properties");
+        String degreeType = rootNode.has("degree_type") ? rootNode.get("degree_type").asText() : "all";
+        String edgeLabel = rootNode.has("edge_label") ? rootNode.get("edge_label").asText() : "";
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = buildNodeDegreeQuery(nodeLabel, nodeProperties, degreeType, edgeLabel);
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype, degree agtype)";
+            
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("node_degree", degreeType + " degree for " + nodeLabel, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("计算节点度数失败", e);
+            throw new RuntimeException("计算节点度数失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord findConnectedComponents(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String edgeLabel = rootNode.get("edge_label").asText();
+        int maxComponents = rootNode.has("max_components") ? rootNode.get("max_components").asInt() : 10;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = String.format(
+                "MATCH (n:%s) " +
+                "OPTIONAL MATCH (n)-[:%s*]-(connected:%s) " +
+                "WITH n, collect(DISTINCT connected) + [n] as component " +
+                "WITH component, size(component) as componentSize " +
+                "ORDER BY componentSize DESC " +
+                "LIMIT %d " +
+                "RETURN component, componentSize",
+                nodeLabel, edgeLabel, nodeLabel, maxComponents
+            );
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (component agtype, size agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("connected_components", "components in " + graphName, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("查找连通分量失败", e);
+            throw new RuntimeException("查找连通分量失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord calculateCentrality(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String centralityType = rootNode.get("centrality_type").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String edgeLabel = rootNode.get("edge_label").asText();
+        int limit = rootNode.has("limit") ? rootNode.get("limit").asInt() : 20;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = buildCentralityQuery(centralityType, nodeLabel, edgeLabel, limit);
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype, centrality agtype)";
+            
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("centrality_analysis", centralityType + " centrality", Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("计算中心性失败", e);
+            throw new RuntimeException("计算中心性失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord findTriangles(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String edgeLabel = rootNode.get("edge_label").asText();
+        int limit = rootNode.has("limit") ? rootNode.get("limit").asInt() : 100;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = String.format(
+                "MATCH (a:%s)-[:%s]-(b:%s)-[:%s]-(c:%s)-[:%s]-(a) " +
+                "WHERE id(a) < id(b) AND id(b) < id(c) " +
+                "RETURN a, b, c " +
+                "LIMIT %d",
+                nodeLabel, edgeLabel, nodeLabel, edgeLabel, nodeLabel, edgeLabel, limit
+            );
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (a agtype, b agtype, c agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("find_triangles", "triangles in " + graphName, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("查找三角形失败", e);
+            throw new RuntimeException("查找三角形失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord detectCommunities(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String edgeLabel = rootNode.get("edge_label").asText();
+        int maxIterations = rootNode.has("max_iterations") ? rootNode.get("max_iterations").asInt() : 10;
+        int minCommunitySize = rootNode.has("min_community_size") ? rootNode.get("min_community_size").asInt() : 3;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            // 简化的社区检测算法（基于连通性）
+            String cypherQuery = String.format(
+                "MATCH (n:%s) " +
+                "OPTIONAL MATCH (n)-[:%s*1..%d]-(community:%s) " +
+                "WITH n, collect(DISTINCT community) + [n] as communityNodes " +
+                "WITH communityNodes, size(communityNodes) as communitySize " +
+                "WHERE communitySize >= %d " +
+                "RETURN communityNodes, communitySize " +
+                "ORDER BY communitySize DESC",
+                nodeLabel, edgeLabel, maxIterations, nodeLabel, minCommunitySize
+            );
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (community agtype, size agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("community_detection", "communities in " + graphName, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("社区检测失败", e);
+            throw new RuntimeException("社区检测失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord patternMatching(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String pattern = rootNode.get("pattern").asText();
+        String whereConditions = rootNode.has("where_conditions") ? rootNode.get("where_conditions").asText() : "";
+        String returnClause = rootNode.has("return_clause") ? rootNode.get("return_clause").asText() : "*";
+        int limit = rootNode.has("limit") ? rootNode.get("limit").asInt() : 50;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            StringBuilder cypherQuery = new StringBuilder("MATCH ").append(pattern);
+            if (!whereConditions.isEmpty()) {
+                cypherQuery.append(" WHERE ").append(whereConditions);
+            }
+            cypherQuery.append(" RETURN ").append(returnClause);
+            cypherQuery.append(" LIMIT ").append(limit);
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery.toString() + "$$) as (result agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("pattern_matching", "pattern: " + pattern, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("模式匹配失败", e);
+            throw new RuntimeException("模式匹配失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord querySubgraph(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        JsonNode centerNode = rootNode.get("center_node");
+        int maxDepth = rootNode.has("max_depth") ? rootNode.get("max_depth").asInt() : 2;
+        JsonNode edgeLabels = rootNode.get("edge_labels");
+        boolean includeProperties = rootNode.has("include_properties") && rootNode.get("include_properties").asBoolean();
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = buildSubgraphQuery(centerNode, maxDepth, edgeLabels, includeProperties);
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (subgraph agtype)";
+            
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("subgraph_query", "subgraph around center node", Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("子图查询失败", e);
+            throw new RuntimeException("子图查询失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord aggregateGraph(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String aggregationType = rootNode.get("aggregation_type").asText();
+        String groupBy = rootNode.has("group_by") ? rootNode.get("group_by").asText() : "";
+        JsonNode filters = rootNode.get("filters");
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String cypherQuery = buildAggregationQuery(aggregationType, groupBy, filters);
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (result agtype)";
+            
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("graph_aggregation", aggregationType + " aggregation", Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("图聚合失败", e);
+            throw new RuntimeException("图聚合失败: " + e.getMessage(), e);
+        }
+    }
+
+    // =============== 图数据导入导出操作实现 ===============
+
+    @Override
+    public DataRecord exportGraphToJson(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String exportFormat = rootNode.has("export_format") ? rootNode.get("export_format").asText() : "networkx";
+        boolean includeProperties = rootNode.has("include_properties") && rootNode.get("include_properties").asBoolean();
+        JsonNode filters = rootNode.get("filters");
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            // 导出节点
+            String nodeQuery = buildExportNodesQuery(filters, includeProperties);
+            String nodeSql = "SELECT * FROM cypher(?, $$" + nodeQuery + "$$) as (nodes agtype)";
+            Result<Record> nodeResult = dslContext.fetch(nodeSql, graphName);
+            
+            // 导出边
+            String edgeQuery = buildExportEdgesQuery(filters, includeProperties);
+            String edgeSql = "SELECT * FROM cypher(?, $$" + edgeQuery + "$$) as (edges agtype)";
+            Result<Record> edgeResult = dslContext.fetch(edgeSql, graphName);
+            
+            // 组合结果
+            List<Map<String, Object>> data = new ArrayList<>();
+            Map<String, Object> exportData = new LinkedHashMap<>();
+            exportData.put("format", exportFormat);
+            exportData.put("nodes", convertToMapList(nodeResult));
+            exportData.put("edges", convertToMapList(edgeResult));
+            data.add(exportData);
+            
+            return new DataRecord("export_graph_json", "exported " + graphName + " as " + exportFormat, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("导出图数据失败", e);
+            throw new RuntimeException("导出图数据失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord importGraphFromJson(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        JsonNode jsonData = rootNode.get("json_data");
+        String mergeStrategy = rootNode.has("merge_strategy") ? rootNode.get("merge_strategy").asText() : "create";
+        int batchSize = rootNode.has("batch_size") ? rootNode.get("batch_size").asInt() : 1000;
+        boolean useTransaction = rootNode.has("use_transaction") && rootNode.get("use_transaction").asBoolean();
+        
+        AtomicReference<DataRecord> result = new AtomicReference<>();
+        
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result.set(importGraphFromJsonLogic(configuration.dsl(), graphName, jsonData, mergeStrategy, batchSize));
+            });
+        } else {
+            result.set(importGraphFromJsonLogic(dslContext, graphName, jsonData, mergeStrategy, batchSize));
+        }
+        
+        return result.get();
+    }
+
+    private DataRecord importGraphFromJsonLogic(DSLContext dslContext, String graphName, JsonNode jsonData, String mergeStrategy, int batchSize) {
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            int nodesImported = 0;
+            int edgesImported = 0;
+            
+            // 导入节点
+            if (jsonData.has("nodes")) {
+                JsonNode nodes = jsonData.get("nodes");
+                nodesImported = importNodes(dslContext, graphName, nodes, mergeStrategy, batchSize);
+            }
+            
+            // 导入边
+            if (jsonData.has("edges")) {
+                JsonNode edges = jsonData.get("edges");
+                edgesImported = importEdges(dslContext, graphName, edges, mergeStrategy, batchSize);
+            }
+            
+            String summary = String.format("imported %d nodes and %d edges", nodesImported, edgesImported);
+            return new DataRecord("import_graph_json", summary, Optional.empty(), Optional.empty());
+        } catch (Exception e) {
+            log.error("导入图数据失败", e);
+            throw new RuntimeException("导入图数据失败: " + e.getMessage(), e);
+        }
+    }
+
+    // =============== 图与向量数据混合操作实现 ===============
+
+    @Override
+    public DataRecord addNodeEmbeddings(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String embeddingProperty = rootNode.get("embedding_property").asText();
+        int vectorDimension = rootNode.get("vector_dimension").asInt();
+        JsonNode embeddingData = rootNode.get("embedding_data");
+        boolean useTransaction = rootNode.has("use_transaction") && rootNode.get("use_transaction").asBoolean();
+        
+        AtomicReference<DataRecord> result = new AtomicReference<>();
+        
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result.set(addNodeEmbeddingsLogic(configuration.dsl(), graphName, nodeLabel, embeddingProperty, vectorDimension, embeddingData));
+            });
+        } else {
+            result.set(addNodeEmbeddingsLogic(dslContext, graphName, nodeLabel, embeddingProperty, vectorDimension, embeddingData));
+        }
+        
+        return result.get();
+    }
+
+    private DataRecord addNodeEmbeddingsLogic(DSLContext dslContext, String graphName, String nodeLabel, String embeddingProperty, int vectorDimension, JsonNode embeddingData) {
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            int updatedNodes = 0;
+            
+            for (JsonNode embedding : embeddingData) {
+                String nodeId = embedding.get("node_id").asText();
+                JsonNode vector = embedding.get("vector");
+                
+                // 构建向量字符串
+                StringBuilder vectorStr = new StringBuilder("[");
+                for (int i = 0; i < vector.size(); i++) {
+                    if (i > 0) vectorStr.append(",");
+                    vectorStr.append(vector.get(i).asDouble());
+                }
+                vectorStr.append("]");
+                
+                String cypherQuery = String.format(
+                    "MATCH (n:%s) WHERE id(n) = %s SET n.%s = %s::vector RETURN n",
+                    nodeLabel, nodeId, embeddingProperty, vectorStr.toString()
+                );
+                
+                String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype)";
+                Result<Record> result = dslContext.fetch(sql, graphName);
+                
+                if (!result.isEmpty()) {
+                    updatedNodes++;
+                }
+            }
+            
+            String summary = String.format("added embeddings to %d nodes", updatedNodes);
+            return new DataRecord("add_node_embeddings", summary, Optional.empty(), Optional.empty());
+        } catch (Exception e) {
+            log.error("添加节点嵌入失败", e);
+            throw new RuntimeException("添加节点嵌入失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord findSimilarNodes(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String embeddingProperty = rootNode.get("embedding_property").asText();
+        JsonNode queryVector = rootNode.get("query_vector");
+        String similarityMetric = rootNode.has("similarity_metric") ? rootNode.get("similarity_metric").asText() : "cosine";
+        int limit = rootNode.has("limit") ? rootNode.get("limit").asInt() : 10;
+        double threshold = rootNode.has("threshold") ? rootNode.get("threshold").asDouble() : 0.8;
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            // 构建查询向量字符串
+            StringBuilder vectorStr = new StringBuilder("[");
+            for (int i = 0; i < queryVector.size(); i++) {
+                if (i > 0) vectorStr.append(",");
+                vectorStr.append(queryVector.get(i).asDouble());
+            }
+            vectorStr.append("]");
+            
+            String operator = getSimilarityOperator(similarityMetric);
+            
+            String cypherQuery = String.format(
+                "MATCH (n:%s) WHERE n.%s IS NOT NULL " +
+                "WITH n, (n.%s %s '%s'::vector) as similarity " +
+                "WHERE similarity >= %f " +
+                "RETURN n, similarity " +
+                "ORDER BY similarity DESC " +
+                "LIMIT %d",
+                nodeLabel, embeddingProperty, embeddingProperty, operator, vectorStr.toString(), threshold, limit
+            );
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype, similarity agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("find_similar_nodes", "similar nodes using " + similarityMetric, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("查找相似节点失败", e);
+            throw new RuntimeException("查找相似节点失败: " + e.getMessage(), e);
+        }
+    }
+
+    // =============== 图与JSON数据混合操作实现 ===============
+
+    @Override
+    public DataRecord queryNodesWithJson(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        String jsonProperty = rootNode.get("json_property").asText();
+        String jsonPath = rootNode.get("json_path").asText();
+        String jsonValue = rootNode.has("json_value") ? rootNode.get("json_value").asText() : "";
+        String jsonOperator = rootNode.get("json_operator").asText();
+        
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            String whereClause = buildJsonWhereClause(jsonProperty, jsonPath, jsonValue, jsonOperator);
+            
+            String cypherQuery = String.format(
+                "MATCH (n:%s) WHERE %s RETURN n, n.%s as json_data",
+                nodeLabel, whereClause, jsonProperty
+            );
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype, json_data agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            List<Map<String, Object>> data = convertToMapList(result);
+            
+            return new DataRecord("query_nodes_with_json", "nodes with JSON " + jsonOperator + " " + jsonPath, Optional.of(data), Optional.empty());
+        } catch (Exception e) {
+            log.error("查询JSON节点失败", e);
+            throw new RuntimeException("查询JSON节点失败: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public DataRecord updateNodeJson(DSLContext dslContext, JsonNode rootNode) {
+        String graphName = rootNode.get("graph_name").asText();
+        String nodeLabel = rootNode.get("node_label").asText();
+        JsonNode nodeFilter = rootNode.get("node_filter");
+        String jsonProperty = rootNode.get("json_property").asText();
+        JsonNode jsonUpdates = rootNode.get("json_updates");
+        boolean useTransaction = rootNode.has("use_transaction") && rootNode.get("use_transaction").asBoolean();
+        
+        AtomicReference<DataRecord> result = new AtomicReference<>();
+        
+        if (useTransaction) {
+            dslContext.transaction(configuration -> {
+                result.set(updateNodeJsonLogic(configuration.dsl(), graphName, nodeLabel, nodeFilter, jsonProperty, jsonUpdates));
+            });
+        } else {
+            result.set(updateNodeJsonLogic(dslContext, graphName, nodeLabel, nodeFilter, jsonProperty, jsonUpdates));
+        }
+        
+        return result.get();
+    }
+
+    private DataRecord updateNodeJsonLogic(DSLContext dslContext, String graphName, String nodeLabel, JsonNode nodeFilter, String jsonProperty, JsonNode jsonUpdates) {
+        try {
+            dslContext.execute("LOAD 'age'");
+            dslContext.execute("SET search_path TO ag_catalog");
+            
+            // 构建节点过滤条件
+            StringBuilder filterClause = new StringBuilder();
+            nodeFilter.fields().forEachRemaining(entry -> {
+                if (filterClause.length() > 0) filterClause.append(" AND ");
+                filterClause.append("n.").append(entry.getKey()).append(" = '").append(entry.getValue().asText()).append("'");
+            });
+            
+            int updatedNodes = 0;
+            
+            for (JsonNode update : jsonUpdates) {
+                String path = update.get("path").asText();
+                String value = update.get("value").asText();
+                String operation = update.get("operation").asText();
+                
+                String setClause = buildJsonUpdateClause(jsonProperty, path, value, operation);
+                
+                String cypherQuery = String.format(
+                    "MATCH (n:%s) WHERE %s SET %s RETURN n",
+                    nodeLabel, filterClause.toString(), setClause
+                );
+                
+                String sql = "SELECT * FROM cypher(?, $$" + cypherQuery + "$$) as (node agtype)";
+                Result<Record> result = dslContext.fetch(sql, graphName);
+                
+                updatedNodes += result.size();
+            }
+            
+            String summary = String.format("updated JSON properties in %d nodes", updatedNodes);
+            return new DataRecord("update_node_json", summary, Optional.empty(), Optional.empty());
+        } catch (Exception e) {
+            log.error("更新节点JSON失败", e);
+            throw new RuntimeException("更新节点JSON失败: " + e.getMessage(), e);
+        }
+    }
+
+    // =============== 新增辅助方法 ===============
+
+    private String buildNodeDegreeQuery(String nodeLabel, JsonNode nodeProperties, String degreeType, String edgeLabel) {
+        StringBuilder query = new StringBuilder("MATCH (n:").append(nodeLabel).append(")");
+        
+        // 添加节点属性过滤
+        if (nodeProperties != null && nodeProperties.size() > 0) {
+            query.append(" WHERE ");
+            nodeProperties.fields().forEachRemaining(entry -> {
+                query.append("n.").append(entry.getKey()).append(" = '").append(entry.getValue().asText()).append("' AND ");
+            });
+            query.setLength(query.length() - 5); // 移除最后的 " AND "
+        }
+        
+        String edgePattern = edgeLabel.isEmpty() ? "" : ":" + edgeLabel;
+        
+        switch (degreeType.toLowerCase()) {
+            case "in" -> query.append(" OPTIONAL MATCH (n)<-[").append(edgePattern).append("]-(m) RETURN n, count(m) as degree");
+            case "out" -> query.append(" OPTIONAL MATCH (n)-[").append(edgePattern).append("]->(m) RETURN n, count(m) as degree");
+            default -> query.append(" OPTIONAL MATCH (n)-[").append(edgePattern).append("]-(m) RETURN n, count(m) as degree");
+        }
+        
+        return query.toString();
+    }
+
+    private String buildCentralityQuery(String centralityType, String nodeLabel, String edgeLabel, int limit) {
+        String edgePattern = edgeLabel.isEmpty() ? "" : ":" + edgeLabel;
+        
+        return switch (centralityType.toLowerCase()) {
+            case "degree" -> String.format(
+                "MATCH (n:%s) OPTIONAL MATCH (n)-[%s]-(m) " +
+                "WITH n, count(m) as degree " +
+                "RETURN n, degree as centrality " +
+                "ORDER BY centrality DESC LIMIT %d",
+                nodeLabel, edgePattern, limit
+            );
+            case "closeness" -> String.format(
+                "MATCH (n:%s) " +
+                "MATCH (n)-[%s*]-(m:%s) " +
+                "WITH n, avg(length(shortestPath((n)-[%s*]-(m)))) as avgDistance " +
+                "RETURN n, 1.0/avgDistance as centrality " +
+                "ORDER BY centrality DESC LIMIT %d",
+                nodeLabel, edgePattern, nodeLabel, edgePattern, limit
+            );
+            case "betweenness" -> String.format(
+                "MATCH (a:%s), (b:%s) WHERE a <> b " +
+                "MATCH path = shortestPath((a)-[%s*]-(b)) " +
+                "WITH nodes(path) as pathNodes " +
+                "UNWIND pathNodes as n " +
+                "RETURN n, count(*) as centrality " +
+                "ORDER BY centrality DESC LIMIT %d",
+                nodeLabel, nodeLabel, edgePattern, limit
+            );
+            default -> throw new IllegalArgumentException("Unsupported centrality type: " + centralityType);
+        };
+    }
+
+    private String buildSubgraphQuery(JsonNode centerNode, int maxDepth, JsonNode edgeLabels, boolean includeProperties) {
+        StringBuilder query = new StringBuilder("MATCH (center");
+        
+        if (centerNode.has("label")) {
+            query.append(":").append(centerNode.get("label").asText());
+        }
+        
+        if (centerNode.has("properties")) {
+            query.append(" ").append(centerNode.get("properties").toString());
+        }
+        
+        query.append(") MATCH (center)-[");
+        
+        if (edgeLabels != null && edgeLabels.isArray()) {
+            query.append(":");
+            for (int i = 0; i < edgeLabels.size(); i++) {
+                if (i > 0) query.append("|");
+                query.append(edgeLabels.get(i).asText());
+            }
+        }
+        
+        query.append("*1..").append(maxDepth).append("]-(connected) ");
+        
+        if (includeProperties) {
+            query.append("RETURN center, connected, relationships((center)-[*1..").append(maxDepth).append("]-(connected)) as edges");
+        } else {
+            query.append("RETURN center, connected");
+        }
+        
+        return query.toString();
+    }
+
+    private String buildAggregationQuery(String aggregationType, String groupBy, JsonNode filters) {
+        StringBuilder query = new StringBuilder();
+        
+        switch (aggregationType.toLowerCase()) {
+            case "node_count" -> {
+                query.append("MATCH (n");
+                if (filters != null && filters.has("node_label")) {
+                    query.append(":").append(filters.get("node_label").asText());
+                }
+                query.append(") ");
+                if (!groupBy.isEmpty()) {
+                    query.append("RETURN labels(n) as ").append(groupBy).append(", count(n) as count");
+                } else {
+                    query.append("RETURN count(n) as node_count");
+                }
+            }
+            case "edge_count" -> {
+                query.append("MATCH ()-[r");
+                if (filters != null && filters.has("edge_label")) {
+                    query.append(":").append(filters.get("edge_label").asText());
+                }
+                query.append("]->() ");
+                if (!groupBy.isEmpty()) {
+                    query.append("RETURN type(r) as ").append(groupBy).append(", count(r) as count");
+                } else {
+                    query.append("RETURN count(r) as edge_count");
+                }
+            }
+            case "avg_degree" -> {
+                query.append("MATCH (n");
+                if (filters != null && filters.has("node_label")) {
+                    query.append(":").append(filters.get("node_label").asText());
+                }
+                query.append(") OPTIONAL MATCH (n)-[]-(m) ");
+                query.append("WITH n, count(m) as degree ");
+                query.append("RETURN avg(degree) as avg_degree");
+            }
+            case "density" -> {
+                query.append("MATCH (n) OPTIONAL MATCH ()-[r]->() ");
+                query.append("WITH count(DISTINCT n) as nodeCount, count(r) as edgeCount ");
+                query.append("RETURN toFloat(edgeCount) / (nodeCount * (nodeCount - 1)) as density");
+            }
+            default -> throw new IllegalArgumentException("Unsupported aggregation type: " + aggregationType);
+        }
+        
+        return query.toString();
+    }
+
+    private String buildExportNodesQuery(JsonNode filters, boolean includeProperties) {
+        StringBuilder query = new StringBuilder("MATCH (n");
+        
+        if (filters != null && filters.has("node_labels")) {
+            JsonNode nodeLabels = filters.get("node_labels");
+            if (nodeLabels.isArray() && nodeLabels.size() > 0) {
+                query.append(":");
+                for (int i = 0; i < nodeLabels.size(); i++) {
+                    if (i > 0) query.append("|");
+                    query.append(nodeLabels.get(i).asText());
+                }
+            }
+        }
+        
+        query.append(") RETURN ");
+        
+        if (includeProperties) {
+            query.append("id(n) as id, labels(n) as labels, properties(n) as properties");
+        } else {
+            query.append("id(n) as id, labels(n) as labels");
+        }
+        
+        return query.toString();
+    }
+
+    private String buildExportEdgesQuery(JsonNode filters, boolean includeProperties) {
+        StringBuilder query = new StringBuilder("MATCH (a)-[r");
+        
+        if (filters != null && filters.has("edge_labels")) {
+            JsonNode edgeLabels = filters.get("edge_labels");
+            if (edgeLabels.isArray() && edgeLabels.size() > 0) {
+                query.append(":");
+                for (int i = 0; i < edgeLabels.size(); i++) {
+                    if (i > 0) query.append("|");
+                    query.append(edgeLabels.get(i).asText());
+                }
+            }
+        }
+        
+        query.append("]->(b) RETURN ");
+        
+        if (includeProperties) {
+            query.append("id(a) as source, id(b) as target, type(r) as type, properties(r) as properties");
+        } else {
+            query.append("id(a) as source, id(b) as target, type(r) as type");
+        }
+        
+        return query.toString();
+    }
+
+    private int importNodes(DSLContext dslContext, String graphName, JsonNode nodes, String mergeStrategy, int batchSize) {
+        int imported = 0;
+        List<JsonNode> batch = new ArrayList<>();
+        
+        for (JsonNode node : nodes) {
+            batch.add(node);
+            
+            if (batch.size() >= batchSize) {
+                imported += processBatchNodes(dslContext, graphName, batch, mergeStrategy);
+                batch.clear();
+            }
+        }
+        
+        if (!batch.isEmpty()) {
+            imported += processBatchNodes(dslContext, graphName, batch, mergeStrategy);
+        }
+        
+        return imported;
+    }
+
+    private int importEdges(DSLContext dslContext, String graphName, JsonNode edges, String mergeStrategy, int batchSize) {
+        int imported = 0;
+        List<JsonNode> batch = new ArrayList<>();
+        
+        for (JsonNode edge : edges) {
+            batch.add(edge);
+            
+            if (batch.size() >= batchSize) {
+                imported += processBatchEdges(dslContext, graphName, batch, mergeStrategy);
+                batch.clear();
+            }
+        }
+        
+        if (!batch.isEmpty()) {
+            imported += processBatchEdges(dslContext, graphName, batch, mergeStrategy);
+        }
+        
+        return imported;
+    }
+
+    private int processBatchNodes(DSLContext dslContext, String graphName, List<JsonNode> nodes, String mergeStrategy) {
+        int processed = 0;
+        
+        for (JsonNode node : nodes) {
+            String operation = "merge".equals(mergeStrategy) ? "MERGE" : "CREATE";
+            
+            StringBuilder cypherQuery = new StringBuilder(operation).append(" (n");
+            
+            if (node.has("labels")) {
+                JsonNode labels = node.get("labels");
+                for (JsonNode label : labels) {
+                    cypherQuery.append(":").append(label.asText());
+                }
+            }
+            
+            if (node.has("properties")) {
+                cypherQuery.append(" ").append(node.get("properties").toString());
+            }
+            
+            cypherQuery.append(") RETURN n");
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery.toString() + "$$) as (node agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            
+            if (!result.isEmpty()) {
+                processed++;
+            }
+        }
+        
+        return processed;
+    }
+
+    private int processBatchEdges(DSLContext dslContext, String graphName, List<JsonNode> edges, String mergeStrategy) {
+        int processed = 0;
+        
+        for (JsonNode edge : edges) {
+            String operation = "merge".equals(mergeStrategy) ? "MERGE" : "CREATE";
+            
+            StringBuilder cypherQuery = new StringBuilder("MATCH (a), (b) WHERE id(a) = ");
+            cypherQuery.append(edge.get("source").asText());
+            cypherQuery.append(" AND id(b) = ").append(edge.get("target").asText());
+            cypherQuery.append(" ").append(operation).append(" (a)-[r:").append(edge.get("type").asText());
+            
+            if (edge.has("properties")) {
+                cypherQuery.append(" ").append(edge.get("properties").toString());
+            }
+            
+            cypherQuery.append("]->(b) RETURN r");
+            
+            String sql = "SELECT * FROM cypher(?, $$" + cypherQuery.toString() + "$$) as (edge agtype)";
+            Result<Record> result = dslContext.fetch(sql, graphName);
+            
+            if (!result.isEmpty()) {
+                processed++;
+            }
+        }
+        
+        return processed;
+    }
+
+    private String getSimilarityOperator(String metric) {
+        return switch (metric.toLowerCase()) {
+            case "cosine" -> "<=>";
+            case "l2" -> "<->";
+            case "inner_product" -> "<#>";
+            default -> "<=>";
+        };
+    }
+
+    private String buildJsonWhereClause(String jsonProperty, String jsonPath, String jsonValue, String jsonOperator) {
+        return switch (jsonOperator.toLowerCase()) {
+            case "contains" -> String.format("n.%s #> '%s' @> '\"%s\"'", jsonProperty, jsonPath, jsonValue);
+            case "equals" -> String.format("n.%s #> '%s' = '\"%s\"'", jsonProperty, jsonPath, jsonValue);
+            case "exists" -> String.format("n.%s #> '%s' IS NOT NULL", jsonProperty, jsonPath);
+            default -> throw new IllegalArgumentException("Unsupported JSON operator: " + jsonOperator);
+        };
+    }
+
+    private String buildJsonUpdateClause(String jsonProperty, String path, String value, String operation) {
+        return switch (operation.toLowerCase()) {
+            case "set" -> String.format("n.%s = jsonb_set(n.%s, '%s', '\"%s\"')", jsonProperty, jsonProperty, path, value);
+            case "append" -> String.format("n.%s = jsonb_set(n.%s, '%s', (n.%s #> '%s') || '\"%s\"')", jsonProperty, jsonProperty, path, jsonProperty, path, value);
+            case "remove" -> String.format("n.%s = n.%s #- '%s'", jsonProperty, jsonProperty, path);
+            default -> throw new IllegalArgumentException("Unsupported JSON operation: " + operation);
+        };
+    }
+}
