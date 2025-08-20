@@ -488,12 +488,13 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "long", "java.lang.Long", "BIGINT" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
             case "LocalDate", "LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
-            case "LocalDateTime", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
+            case "LocalDateTime","LOCALDATETIME", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
             case "LocalTime", "LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
             case "OffsetDateTime", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
             case "JSONB", "org.jooq.JSONB" -> SQLDataType.JSONB;
             case "Boolean", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
             case "JSON", "org.jooq.JSON" -> SQLDataType.JSON;
+            case "TEXT" -> SQLDataType.CLOB(Integer.MAX_VALUE);
             case "UUID" -> SQLDataType.UUID;
             case "GEOGRAPHY" -> SQLDataType.GEOGRAPHY;
             case "GEOMETRY" -> SQLDataType.GEOMETRY;
