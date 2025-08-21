@@ -487,7 +487,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
             case "long", "java.lang.Long", "BIGINT" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
-            case "LocalDate", "LOCALDATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
+            case "LocalDate", "LOCALDATE","DATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
             case "LocalDateTime","LOCALDATETIME", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
             case "LocalTime", "LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
             case "OffsetDateTime","OFFSETDATETIME", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
