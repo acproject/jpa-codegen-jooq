@@ -603,6 +603,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     alterColumn.set(dataType).execute();
                 }
                 case "drop" -> dslContext.alterTable(tableName).dropColumn(columnName).execute();
+                case "nothing" -> { /** do nothing */}
                 default -> throw new IllegalArgumentException("Column type is required for add opertion");
             }
         }
