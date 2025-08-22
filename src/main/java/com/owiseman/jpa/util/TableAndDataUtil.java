@@ -3,7 +3,6 @@ package com.owiseman.jpa.util;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-
 import com.owiseman.jpa.model.DataRecord;
 import com.owiseman.jpa.model.PaginationInfo;
 import lombok.extern.log4j.Log4j;
@@ -32,7 +31,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-
 /**
  * @author acproject@qq.com
  * @date 2025-01-18 19:19
@@ -60,13 +58,13 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     }
 
     public static void processRequest(DSLContext dslContext,
-                                      RabbitTemplate rabbitTemplate, String json) throws Exception {
+            RabbitTemplate rabbitTemplate, String json) throws Exception {
         processRequest(dslContext, json);
         getInstance().sendToMQ(rabbitTemplate, json);
     }
 
     public static DataRecord processRequest(DSLContext dslContext,
-                                            String json) throws Exception {
+            String json) throws Exception {
         JsonNode rootNode = objectMapper.readTree(json);
         String operation = rootNode.get("operation").asText();
         switch (operation) {
@@ -115,7 +113,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "drop_index" -> {
                 return getInstance().dropIndex(dslContext, rootNode);
             }
-            
+
             // =============== Apache AGE 图数据库操作 ===============
             case "create_graph" -> {
                 return GraphDatabaseUtil.getInstance().createGraph(dslContext, rootNode);
@@ -168,7 +166,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "execute_cypher" -> {
                 return GraphDatabaseUtil.getInstance().executeCypher(dslContext, rootNode);
             }
-            
+
             // =============== 高级图分析操作 ===============
             case "calculate_node_degree" -> {
                 return GraphDatabaseUtil.getInstance().calculateNodeDegree(dslContext, rootNode);
@@ -194,7 +192,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "aggregate_graph" -> {
                 return GraphDatabaseUtil.getInstance().aggregateGraph(dslContext, rootNode);
             }
-            
+
             // =============== 图数据导入导出操作 ===============
             case "export_graph_to_json" -> {
                 return GraphDatabaseUtil.getInstance().exportGraphToJson(dslContext, rootNode);
@@ -202,7 +200,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "import_graph_from_json" -> {
                 return GraphDatabaseUtil.getInstance().importGraphFromJson(dslContext, rootNode);
             }
-            
+
             // =============== 图与向量数据混合操作 ===============
             case "add_node_embeddings" -> {
                 return GraphDatabaseUtil.getInstance().addNodeEmbeddings(dslContext, rootNode);
@@ -210,7 +208,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "find_similar_nodes" -> {
                 return GraphDatabaseUtil.getInstance().findSimilarNodes(dslContext, rootNode);
             }
-            
+
             // =============== 图与JSON数据混合操作 ===============
             case "query_nodes_with_json" -> {
                 return GraphDatabaseUtil.getInstance().queryNodesWithJson(dslContext, rootNode);
@@ -218,7 +216,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "update_node_json" -> {
                 return GraphDatabaseUtil.getInstance().updateNodeJson(dslContext, rootNode);
             }
-            
+
             // =============== JSON/JSONB 数据操作 ===============
             case "json_path_query" -> {
                 return JsonDataUtil.getInstance().queryJsonPath(dslContext, rootNode);
@@ -250,7 +248,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "json_object_aggregate" -> {
                 return JsonDataUtil.getInstance().aggregateJsonObject(dslContext, rootNode);
             }
-            
+
             // =============== 向量数据库操作 ===============
             case "create_vector_table" -> {
                 return VectorDataUtil.getInstance().createVectorTable(dslContext, rootNode);
@@ -291,7 +289,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             case "convert_vector_type" -> {
                 return VectorDataUtil.getInstance().convertVectorType(dslContext, rootNode);
             }
-            
+
             default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
         }
     }
@@ -448,7 +446,6 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 // 2. 生成约束名称（格式：fk_本表名_外键字段名）
                 String fkName = "fk_" + tableName + "_" + String.join("_", columnList);
 
-
                 var constraint = DSL.constraint(fkName)
                         .foreignKey(columnList.stream()
                                 .map(col -> DSL.field(DSL.name(col)))
@@ -471,8 +468,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 }
                 // 3. 创建外键约束
                 createTableStep.constraint(
-                        constraint
-                );
+                        constraint);
             }
         }
 
@@ -483,16 +479,27 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     }
 
     private static DataType getSqlDataType(String typeName) {
+        // 处理带参数的数据类型
+        if (typeName.startsWith("VARCHAR(")) {
+            return SQLDataType.VARCHAR;
+        }
+        if (typeName.startsWith("CHAR(")) {
+            return SQLDataType.CHAR;
+        }
+        if (typeName.startsWith("DECIMAL(")) {
+            return SQLDataType.DECIMAL;
+        }
+
         return switch (typeName) {
             case "int", "java.lang.Integer", "INTEGER" -> SQLDataType.INTEGER;
             case "long", "java.lang.Long", "BIGINT" -> SQLDataType.BIGINT;
             case "String", "java.lang.String", "VARCHAR" -> SQLDataType.VARCHAR;
-            case "LocalDate", "LOCALDATE","DATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
-            case "LocalDateTime","LOCALDATETIME", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
+            case "LocalDate", "LOCALDATE", "DATE", "java.time.LocalDate" -> SQLDataType.LOCALDATE;
+            case "LocalDateTime", "LOCALDATETIME", "java.time.LocalDateTime" -> SQLDataType.LOCALDATETIME;
             case "LocalTime", "LOCALTIME", "java.time.LocalTime" -> SQLDataType.LOCALTIME;
-            case "OffsetDateTime","OFFSETDATETIME", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
+            case "OffsetDateTime", "OFFSETDATETIME", "java.time.OffsetDateTime", "java.util.Date" -> SQLDataType.DATE;
             case "JSONB", "org.jooq.JSONB" -> SQLDataType.JSONB;
-            case "Boolean","BOOLEAN", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
+            case "Boolean", "BOOLEAN", "java.lang.Boolean" -> SQLDataType.BOOLEAN;
             case "DECIMAL(10,2)", "DECIMAL" -> SQLDataType.DECIMAL;
             case "JSON", "org.jooq.JSON" -> SQLDataType.JSON;
             case "TEXT" -> SQLDataType.CLOB(Integer.MAX_VALUE);
@@ -603,7 +610,9 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     alterColumn.set(dataType).execute();
                 }
                 case "drop" -> dslContext.alterTable(tableName).dropColumn(columnName).execute();
-                case "nothing" -> { /** do nothing */}
+                case "nothing" -> {
+                    /** do nothing */
+                }
                 default -> throw new IllegalArgumentException("Column type is required for add opertion");
             }
         }
@@ -680,7 +689,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 dslContext.transaction(configuration -> {
                     DSLContext txContext = DSL.using(configuration);
                     InsertValuesStepN<Record> insertStep = txContext.insertInto(DSL.table(tableName))
-                            .columns(dataList.getFirst().keySet().stream().map(DSL::field).collect(Collectors.toList()));
+                            .columns(
+                                    dataList.getFirst().keySet().stream().map(DSL::field).collect(Collectors.toList()));
                     for (Map<String, Object> data : dataList) {
                         insertStep.values(data.values().toArray());
                     }
@@ -713,8 +723,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 rootNode.get("use_transaction").asBoolean();
 
         Map<String, Object> data = new LinkedHashMap<>();
-        dataNode.fields().forEachRemaining(entry ->
-                data.put(entry.getKey(), entry.getValue().asText()));
+        dataNode.fields().forEachRemaining(entry -> data.put(entry.getKey(), entry.getValue().asText()));
         List<Condition> conditions = new ArrayList<>();
         Condition condition = DSL.noCondition();
         if (whereArray != null && whereArray.isArray()) {
@@ -755,8 +764,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
             JsonNode whereArray = rootNode.get("where");
 
             Map<String, Object> data = new LinkedHashMap<>();
-            valuesNode.fields().forEachRemaining(entry ->
-                    data.put(entry.getKey(), entry.getValue().asText()));
+            valuesNode.fields().forEachRemaining(entry -> data.put(entry.getKey(), entry.getValue().asText()));
             Condition condition = DSL.noCondition();
             if (whereArray != null && whereArray.isArray()) {
                 for (JsonNode whereNode : whereArray) {
@@ -793,8 +801,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 rootNode.get("use_transaction").asBoolean();
 
         Condition condition = DSL.noCondition();
-        whereNode.fields().forEachRemaining(entry ->
-                condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
+        whereNode.fields()
+                .forEachRemaining(entry -> condition.and(DSL.field(entry.getKey()).eq(entry.getValue().asText())));
         if (useTransaction) {
             dslContext.transaction(configuration -> {
                 DSLContext txContext = DSL.using(configuration);
@@ -878,7 +886,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                 if (conditionNode.isArray()) {
                     List<String> values = new ArrayList<>();
                     conditionNode.forEach(value -> values.add(value.asText()));
-                  condition.set(condition.get().and(DSL.field(fieldName).in(values)));
+                    condition.set(condition.get().and(DSL.field(fieldName).in(values)));
                 } else if (conditionNode.isObject()) {
                     String operator = conditionNode.get("operator").asText();
                     JsonNode valueNode = conditionNode.get("value");
@@ -1020,7 +1028,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         JsonNode orderByArray = rootNode.get("orderByArr");
         JsonNode paginationNode = rootNode.get("pagination");
 
-         AtomicReference<Condition> condition = new AtomicReference<>(DSL.noCondition());
+        AtomicReference<Condition> condition = new AtomicReference<>(DSL.noCondition());
 
         // Process WHERE conditions
         if (whereArray != null) {
@@ -1033,10 +1041,10 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
                     List<String> values = new ArrayList<>();
                     entry.getValue().forEach(value -> {
                         values.add(value.asText());
-                       condition.set(condition.get().and(DSL.field(entry.getKey()).in(values)));
+                        condition.set(condition.get().and(DSL.field(entry.getKey()).in(values)));
                     });
                 } else if (conditionNode.isObject()) {
-                   condition.set(operatorCondition(conditionNode.get("operator").asText(),
+                    condition.set(operatorCondition(conditionNode.get("operator").asText(),
                             condition.get(), conditionNode, fieldName));
                 } else {
                     // Process `=` condition
@@ -1199,8 +1207,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     private DataRecord createIndexLogic(DSLContext dslContext, JsonNode rootNode) {
         String tableName = rootNode.get("table").asText();
         String indexName = rootNode.get("index_name").asText();
-//        String indexType = rootNode.has("index_type") ?
-//                rootNode.get("index_type").asText() : "BTREE";
+        // String indexType = rootNode.has("index_type") ?
+        // rootNode.get("index_type").asText() : "BTREE";
         JsonNode columnsNode = rootNode.get("columns");
         if (columnsNode == null || !columnsNode.isArray() || columnsNode.size() == 0) {
             log.warn("No columns defined for index: " + indexName);
@@ -1230,17 +1238,17 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         }
 
         // 设置索引类型 ：目前jooq还不支持设置类型，后面主要功能后，再来实现
-//        if ("BTREE".equalsIgnoreCase(indexType)) {
-//            // todo
-//        } else if ("HASH".equalsIgnoreCase(indexType)) {
-//            // todo
-//        } else if ("GIN".equalsIgnoreCase(indexType)) {
-//            // todo
-//        } else if ("GIST".equalsIgnoreCase(indexType)) {
-//            // todo
-//        } else {
-//            throw new IllegalArgumentException("Unsupported index type: " + indexType);
-//        }
+        // if ("BTREE".equalsIgnoreCase(indexType)) {
+        // // todo
+        // } else if ("HASH".equalsIgnoreCase(indexType)) {
+        // // todo
+        // } else if ("GIN".equalsIgnoreCase(indexType)) {
+        // // todo
+        // } else if ("GIST".equalsIgnoreCase(indexType)) {
+        // // todo
+        // } else {
+        // throw new IllegalArgumentException("Unsupported index type: " + indexType);
+        // }
     }
 
     private DataRecord dropIndexLogic(DSLContext dslContext, JsonNode rootNode) {
@@ -1316,7 +1324,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
 
             // 设置复合主键
             createTableStep.constraint(DSL.constraint("pk_" + intermediateTableName)
-                            .primaryKey(primaryKeys.toArray(new String[0])))
+                    .primaryKey(primaryKeys.toArray(new String[0])))
                     .execute();
             log.info("Created intermediate table: " + intermediateTableName);
         }
@@ -1324,7 +1332,7 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
     }
 
     private Condition operatorCondition(String operator, Condition condition,
-                                        JsonNode valueNode, String fieldName) {
+            JsonNode valueNode, String fieldName) {
         switch (operator) {
             case "eq" -> {
                 if (isNumber(valueNode.asText())) {
@@ -1452,12 +1460,14 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
         return str.matches(floatPattern);
     }
 
-    private static void modifyPrimaryKeyToAutoIncrement(DSLContext dslContext, String tableName, String primaryKeyColumn) {
+    private static void modifyPrimaryKeyToAutoIncrement(DSLContext dslContext, String tableName,
+            String primaryKeyColumn) {
         // 1. 删除主键约束
         dslContext.alterTable(tableName)
                 .dropConstraintIfExists("pk_" + tableName).execute();
         // 2. 修改主键为自增主键
-        String alterColumnSql = String.format("ALTER TABLE %s MODIFY COLUMN %s INT AUTO_INCREMENT", tableName, primaryKeyColumn);
+        String alterColumnSql = String.format("ALTER TABLE %s MODIFY COLUMN %s INT AUTO_INCREMENT", tableName,
+                primaryKeyColumn);
         dslContext.execute(alterColumnSql);
 
         // 3. 重新添加主键约束
@@ -1471,8 +1481,8 @@ public class TableAndDataUtil implements TabaleAndDataOperation {
      * @return
      */
     private ConstraintForeignKeyOnStep getReferentialAction(ConstraintForeignKeyOnStep constraint,
-                                                            String actionName,
-                                                            String action) {
+            String actionName,
+            String action) {
         if (actionName.equals("on_delete")) {
             return switch (action.toUpperCase()) {
                 case "CASCADE" -> constraint.onDeleteCascade();
